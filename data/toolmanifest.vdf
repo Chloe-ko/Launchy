@@ -1,0 +1,8 @@
+"manifest"
+{
+  "commandline"                    "/launchy run"
+  "commandline_waitforexitandrun"  "/launchy waitforexitandrun"
+  "commandline_runinprefix"        "/launchy runinprefix"
+  "commandline_getcompatpath"      "/launchy getcompatpath"
+  "commandline_getnativepath"      "/launchy getnativepath"
+}

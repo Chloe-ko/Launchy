@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+"""Launchy entry point — works both from source tree and installed."""
+
+import sys
+import os
+
+# When running from the source tree, add the project root to sys.path so
+# `import launchy` resolves to the local package.
+_script = os.path.realpath(__file__)
+_project_root = os.path.dirname(os.path.dirname(_script))
+_module = os.path.join(_project_root, "launchy", "__init__.py")
+if os.path.exists(_module) and _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
+from launchy.main import main
+
+if __name__ == "__main__":
+    main()

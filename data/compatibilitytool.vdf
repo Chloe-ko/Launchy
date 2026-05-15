@@ -1,0 +1,13 @@
+"compatibilitytools"
+{
+  "compat_tools"
+  {
+    "launchy"
+    {
+      "install_path" "."
+      "display_name"  "Launchy"
+      "from_oslist"   "windows"
+      "to_oslist"     "linux"
+    }
+  }
+}
