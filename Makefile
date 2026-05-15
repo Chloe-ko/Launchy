@@ -12,8 +12,9 @@ install:
 		launchy/main.py launchy/steam.py launchy/utils.py \
 		"$(SITE_PKGS)/launchy/"
 	install -m644 launchy/ui/__init__.py launchy/ui/launch_window.py \
-		launchy/ui/settings_window.py \
+		launchy/ui/settings_window.py launchy/ui/set_window.py \
 		"$(SITE_PKGS)/launchy/ui/"
+	install -m644 data/logo-heart.svg "$(SITE_PKGS)/launchy/logo.svg"
 	install -Dm755 bin/launchy "$(BINDIR)/launchy"
 	@echo ""
 	@echo "Installed to $(PREFIX)."

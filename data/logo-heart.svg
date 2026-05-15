@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="steam" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%"     stop-color="#2a5590"/>
+      <stop offset="21.2%"  stop-color="#1a4a9a"/>
+      <stop offset="40.7%"  stop-color="#1a60b8"/>
+      <stop offset="58.1%"  stop-color="#1a82d4"/>
+      <stop offset="73.8%"  stop-color="#1aaaea"/>
+      <stop offset="87.3%"  stop-color="#18c8f8"/>
+      <stop offset="100%"   stop-color="#18e0ff"/>
+    </linearGradient>
+  </defs>
+
+  <path d="M256,400
+    C256,400 64,276 64,156
+    C64,90 112,44 172,44
+    C210,44 244,66 256,92
+    C268,66 302,44 340,44
+    C400,44 448,90 448,156
+    C448,276 256,400 256,400 Z"
+    fill="url(#steam)"/>
+</svg>

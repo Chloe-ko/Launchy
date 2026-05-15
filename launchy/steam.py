@@ -53,6 +53,10 @@ def get_game_info(appid: str) -> dict:
         if img:
             info["image_path"] = str(img)
 
+        logo = _logo_image(appid)
+        if logo:
+            info["logo_path"] = str(logo)
+
     return info
 
 
@@ -83,22 +87,44 @@ def _acf_field(path: Path, field: str) -> Optional[str]:
         return None
 
 
+def _logo_image(appid: str) -> Optional[Path]:
+    if not STEAM_ROOT:
+        return None
+    cache = STEAM_ROOT / "appcache" / "librarycache"
+    appid_dir = cache / appid
+    if appid_dir.is_dir():
+        candidate = appid_dir / "logo.png"
+        if candidate.exists():
+            return candidate
+        for sub in appid_dir.iterdir():
+            if sub.is_dir():
+                candidate = sub / "logo.png"
+                if candidate.exists():
+                    return candidate
+    return None
+
+
 def _header_image(appid: str) -> Optional[Path]:
     if not STEAM_ROOT:
         return None
     cache = STEAM_ROOT / "appcache" / "librarycache"
 
-    # New format: librarycache/<appid>/<hash>/<name>.jpg
     appid_dir = cache / appid
     if appid_dir.is_dir():
-        for name in ("library_header.jpg", "library_hero.jpg", "library_capsule.jpg"):
+        for name in ("library_hero.jpg", "library_header.jpg", "library_600x900.jpg", "library_capsule.jpg"):
+            # Flat: librarycache/<appid>/<name>.jpg
+            candidate = appid_dir / name
+            if candidate.exists():
+                return candidate
+            # Hash-subdir: librarycache/<appid>/<hash>/<name>.jpg
             for sub in appid_dir.iterdir():
-                candidate = sub / name
-                if candidate.exists():
-                    return candidate
+                if sub.is_dir():
+                    candidate = sub / name
+                    if candidate.exists():
+                        return candidate
 
     # Old flat format: librarycache/<appid>_header.jpg
-    for name in (f"{appid}_header.jpg", f"{appid}_header.png", f"{appid}_library_hero.jpg"):
+    for name in (f"{appid}_library_hero.jpg", f"{appid}_header.jpg", f"{appid}_header.png"):
         p = cache / name
         if p.exists():
             return p
@@ -112,7 +138,7 @@ def _header_image(appid: str) -> Optional[Path]:
 
 def get_available_proton_versions() -> list:
     """Return [{"name": display_name, "id": internal_id, "binary": path_or_None}, ...]."""
-    versions = [{"name": "Steam Default", "id": "", "binary": None}]
+    versions: list = []
     if not STEAM_ROOT:
         return versions
 
@@ -146,6 +172,28 @@ def get_available_proton_versions() -> list:
     return versions
 
 
+def select_best_proton_id(versions: list) -> str:
+    """Return the ID of the best available Proton version per preference order."""
+    candidates = [v for v in versions if v.get("binary")]
+
+    def _match(v: dict, *keywords: str) -> bool:
+        hay = (v["name"] + " " + v["id"]).lower()
+        return all(k in hay for k in keywords)
+
+    for predicate in [
+        lambda v: _match(v, "cachyos", "latest"),
+        lambda v: _match(v, "cachyos"),
+        lambda v: _match(v, "ge", "latest"),
+        lambda v: _match(v, "ge-proton") or _match(v, "proton-ge"),
+        lambda v: _match(v, "experimental"),
+        lambda v: bool(re.search(r"\d", v["name"])),
+    ]:
+        hit = next((v for v in candidates if predicate(v)), None)
+        if hit:
+            return hit["id"]
+    return candidates[0]["id"] if candidates else ""
+
+
 def find_proton_binary(proton_id: str) -> Optional[str]:
     """Return the path to the 'proton' script for the given internal tool ID."""
     if not proton_id:
@@ -168,73 +216,108 @@ def find_steam_runtime_entry_point() -> Optional[str]:
     return None
 
 
-def get_proc_launch_env(appid: str) -> dict:
-    """Return env vars added by Steam specifically for this game launch.
+def get_steam_launch_env(appid: str) -> dict:
+    """Return env vars parsed from the game's Steam launch options in localconfig.vdf.
 
-    Strategy: find the Steam client process (parent of the reaper process that
-    launched us), read its environment as a baseline, then return vars that are
-    new or changed in our own environment — minus known Steam infrastructure
-    prefixes. What remains is what the user set in launch options (including via
-    client mods like Millennium that inject global launch options).
-    Returns {} when called outside a Steam context.
+    Parses KEY=VALUE tokens that appear before %command% in the launch options string.
+    Returns {} if no launch options found or no env vars set.
     """
-    steam_pid = _find_steam_client_pid()
-    if not steam_pid:
+    opts = _get_localconfig_launch_options(appid)
+    if not opts:
         return {}
+    import shlex
+    env = {}
     try:
-        steam_env = _read_proc_environ(steam_pid)
+        tokens = shlex.split(opts)
     except Exception:
         return {}
-
-    _INFRA_PREFIXES = ("STEAM_", "LD_", "PRESSURE_VESSEL_")
-    _INFRA_VARS = frozenset({
-        "SteamAppId", "SteamGameId", "SteamClientLaunch",
-        "DBUS_SESSION_BUS_ADDRESS",
-    })
-
-    result = {}
-    for k, v in os.environ.items():
-        if k in _INFRA_VARS or any(k.startswith(p) for p in _INFRA_PREFIXES):
-            continue
-        if k not in steam_env or steam_env[k] != v:
-            result[k] = v
-    return result
-
-
-def _find_steam_client_pid() -> int:
-    """Walk up the process tree to find the Steam client PID (parent of reaper)."""
-    import logging
-    pid = os.getpid()
-    visited: set = set()
-    while pid and pid not in visited:
-        visited.add(pid)
-        try:
-            parts = (Path(f"/proc/{pid}/cmdline")
-                     .read_bytes().decode(errors="replace").split("\0"))
-            parts = [p for p in parts if p]
-            logging.debug("proc walk pid=%s cmdline=%s", pid, parts[:4])
-            if parts and os.path.basename(parts[0]) == "reaper" and "SteamLaunch" in parts:
-                m = re.search(r"^PPid:\s+(\d+)",
-                              Path(f"/proc/{pid}/status").read_text(), re.MULTILINE)
-                if m:
-                    return int(m.group(1))
-                return 0
-            m = re.search(r"^PPid:\s+(\d+)",
-                          Path(f"/proc/{pid}/status").read_text(), re.MULTILINE)
-            pid = int(m.group(1)) if m else 0
-        except Exception:
+    for token in tokens:
+        if token == "%command%":
             break
-    return 0
-
-
-def _read_proc_environ(pid: int) -> dict:
-    data = Path(f"/proc/{pid}/environ").read_bytes()
-    env: dict = {}
-    for entry in data.split(b"\0"):
-        if b"=" in entry:
-            k, _, v = entry.partition(b"=")
-            env[k.decode(errors="replace")] = v.decode(errors="replace")
+        if "=" in token:
+            k, _, v = token.partition("=")
+            if k and k.replace("_", "").isalnum():
+                env[k] = v
     return env
+
+
+def get_steam_launch_wrappers(appid: str) -> str:
+    """Return wrapper tokens from Steam launch options (between env vars and %command%).
+
+    Tokens before %command% that are not KEY=VALUE are wrapper commands + their args.
+    Returns empty string if no %command% or no wrapper tokens found.
+    """
+    opts = _get_localconfig_launch_options(appid)
+    if not opts or "%command%" not in opts:
+        return ""
+    before = opts.split("%command%", 1)[0].strip()
+    if not before:
+        return ""
+    import shlex
+    try:
+        tokens = shlex.split(before)
+    except Exception:
+        return before
+    i = 0
+    while i < len(tokens):
+        k = tokens[i].partition("=")[0]
+        if "=" in tokens[i] and k and k.replace("_", "").isalnum():
+            i += 1
+        else:
+            break
+    wrapper_tokens = tokens[i:]
+    if not wrapper_tokens:
+        return ""
+    return shlex.join(wrapper_tokens)
+
+
+def get_steam_launch_args(appid: str) -> str:
+    """Return game args from Steam launch options.
+
+    Everything after %command%, or the full string if %command% is absent.
+    Returns empty string if no launch options or nothing to return.
+    """
+    opts = _get_localconfig_launch_options(appid)
+    if not opts:
+        return ""
+    if "%command%" in opts:
+        return opts.split("%command%", 1)[1].strip()
+    return opts.strip()
+
+
+def _get_localconfig_launch_options(appid: str) -> str:
+    if not STEAM_ROOT:
+        return ""
+    userdata = STEAM_ROOT / "userdata"
+    if not userdata.exists():
+        return ""
+    for user_dir in sorted(userdata.iterdir()):
+        if not user_dir.is_dir():
+            continue
+        lcv = user_dir / "config" / "localconfig.vdf"
+        if not lcv.exists():
+            continue
+        try:
+            text = lcv.read_text(errors="replace")
+            m = re.search(rf'"{re.escape(appid)}"\s*\{{', text)
+            if not m:
+                continue
+            start = m.end()
+            depth = 1
+            i = start
+            while i < len(text) and depth > 0:
+                if text[i] == "{":
+                    depth += 1
+                elif text[i] == "}":
+                    depth -= 1
+                i += 1
+            block = text[start : i - 1]
+            lo = re.search(r'"LaunchOptions"\s+"([^"]*)"', block, re.IGNORECASE)
+            if lo:
+                return lo.group(1)
+        except Exception:
+            continue
+    return ""
 
 
 def _find_in_all_libraries(relative: str) -> Optional[Path]:

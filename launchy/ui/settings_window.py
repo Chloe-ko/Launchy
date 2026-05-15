@@ -29,30 +29,35 @@ class SettingsApplication(Adw.Application):
 
 
 class SettingsWindow(Adw.Window):
-    def __init__(self, *, appid: str, is_global: bool):
+    def __init__(self, *, appid: str, is_global: bool, on_saved=None):
         super().__init__()
         self.appid = appid
         self.is_global = is_global
+        self._on_saved_cb = on_saved
 
         self._config = get_global_config() if is_global else get_game_config(appid)
         self._proton_versions = get_available_proton_versions()
-        if not is_global:
-            from launchy.steam import get_proc_launch_env
-            self._steam_env = get_proc_launch_env(appid)
-        else:
-            self._steam_env = {}
 
         if is_global:
             self._header_title = "Global Settings"
             self._header_subtitle = ""
+            self._steam_env = {}
+            self._steam_args = ""
+            self._steam_wrappers = ""
+            self._global_config = None
         else:
-            from launchy.steam import get_game_info
+            from launchy.steam import get_game_info, get_steam_launch_env
             game_name = get_game_info(appid).get("name") or f"App {appid}"
             self._header_title = "Game Settings"
             self._header_subtitle = f"{game_name}  ·  App {appid}"
+            self._steam_env = get_steam_launch_env(appid)
+            from launchy.steam import get_steam_launch_args, get_steam_launch_wrappers
+            self._steam_args = get_steam_launch_args(appid)
+            self._steam_wrappers = get_steam_launch_wrappers(appid)
+            self._global_config = get_global_config()
 
         self.set_title(self._header_title)
-        self.set_default_size(580, 520)
+        self.set_default_size(800, 680)
 
         self._build_ui()
 
@@ -88,36 +93,59 @@ class SettingsWindow(Adw.Window):
         notebook.set_margin_bottom(8)
         toolbar.set_content(notebook)
 
-        # General tab
+        self._set_rows = []  # populated by _build_game_sets_tab for per-game
+        self._explicit_set_ids: set = set()
+        if not self.is_global:
+            self._explicit_set_ids = set(self._config.get("sets", {}).get("enabled", []))
+
         general_page, self._general_widgets = self._build_general_tab()
         notebook.append_page(general_page, Gtk.Label(label="General"))
 
-        # Environment tab
+        gcfg = self._global_config or {}
+
+        global_env = {k: str(v) for k, v in gcfg.get("env", {}).items()}
         env_data = self._config.get("env", {})
-        env_page, self._env_rows = self._build_kv_tab(
+        env_page, self._env_rows, self._global_env_rows = self._build_kv_tab(
             "Key=value pairs added to the game's environment.",
             {k: str(v) for k, v in env_data.items()},
             self._steam_env,
+            global_env if not self.is_global else {},
         )
         notebook.append_page(env_page, Gtk.Label(label="Environment"))
 
-        # Wrappers tab
+        global_wrappers = [str(w) for w in gcfg.get("wrappers", {}).get("pre", [])]
         wrappers = self._config.get("wrappers", {}).get("pre", [])
-        wrappers_page, self._wrapper_rows = self._build_wrappers_tab(
+        wrappers_page, self._wrapper_rows, self._global_wrapper_rows = self._build_wrappers_tab(
             [str(w) for w in wrappers],
+            self._steam_wrappers,
+            global_wrappers if not self.is_global else [],
         )
         notebook.append_page(wrappers_page, Gtk.Label(label="Wrappers"))
 
-        # Arguments tab
         args_key = "extra" if self.is_global else "game_args"
         args_desc = (
             "Extra arguments appended after the game command (all games)."
             if self.is_global
             else "Arguments passed directly to the game executable."
         )
+        global_extra = [str(a) for a in gcfg.get("args", {}).get("extra", [])]
         args_data = self._config.get("args", {}).get(args_key, [])
-        args_page, self._arg_rows = self._build_list_tab(args_desc, [str(a) for a in args_data])
+        args_page, self._arg_rows, self._global_arg_rows = self._build_list_tab(
+            args_desc,
+            [str(a) for a in args_data],
+            self._steam_args,
+            global_extra if not self.is_global else [],
+        )
         notebook.append_page(args_page, Gtk.Label(label="Arguments"))
+
+        if self.is_global:
+            sets_page = self._build_global_sets_tab()
+        else:
+            sets_page = self._build_game_sets_tab()
+        notebook.append_page(sets_page, Gtk.Label(label="Sets"))
+
+        if not self.is_global:
+            self._refresh_set_sections()
 
     # ------------------------------------------------------------------
     # Tab builders
@@ -139,7 +167,6 @@ class SettingsWindow(Adw.Window):
 
         widgets = {}
 
-        # Countdown (global only)
         if self.is_global:
             adj = Gtk.Adjustment(
                 value=self._config.get("general", {}).get("countdown", 5),
@@ -157,20 +184,34 @@ class SettingsWindow(Adw.Window):
             group.add(row)
             widgets["countdown_spin"] = spin
 
-        # Proton dropdown
-        names = [v["name"] for v in self._proton_versions]
-        model = Gtk.StringList.new(names)
-
         current_id = self._config.get("general", {}).get("proton", "")
-        current_idx = next(
-            (i for i, v in enumerate(self._proton_versions) if v["id"] == current_id), 0
-        )
 
-        subtitle = (
-            "Default Proton/compat tool for all games (unless overridden per-game)."
-            if self.is_global
-            else "Overrides the global Proton setting for this game only."
-        )
+        if not self.is_global:
+            gcfg = self._global_config or {}
+            global_proton_id = gcfg.get("general", {}).get("proton", "")
+            global_proton_name = next(
+                (v["name"] for v in self._proton_versions if v["id"] == global_proton_id),
+                global_proton_id or "None",
+            )
+            inherited_label = f"Inherit Global: {global_proton_name}"
+            names = [inherited_label] + [v["name"] for v in self._proton_versions]
+            model = Gtk.StringList.new(names)
+            if current_id:
+                current_idx = next(
+                    (i + 1 for i, v in enumerate(self._proton_versions) if v["id"] == current_id), 0
+                )
+            else:
+                current_idx = 0
+            subtitle = "Overrides the global Proton setting for this game only."
+            widgets["proton_inherited_label"] = inherited_label
+        else:
+            names = [v["name"] for v in self._proton_versions]
+            model = Gtk.StringList.new(names)
+            current_idx = next(
+                (i for i, v in enumerate(self._proton_versions) if v["id"] == current_id), 0
+            )
+            subtitle = "Default Proton/compat tool for all games (unless overridden per-game)."
+
         proton_row = Adw.ComboRow(
             title="Proton Version",
             subtitle=subtitle,
@@ -182,98 +223,468 @@ class SettingsWindow(Adw.Window):
 
         return scrolled, widgets
 
-    def _build_kv_tab(self, description: str, initial: dict, steam_env: dict = {}):
-        outer, listbox, rows = self._tab_scaffold(description)
+    def _build_kv_tab(self, description: str, initial: dict, steam_env: dict = {}, global_env: dict = {}):
+        outer, content = self._tab_outer()
+        global_rows = []
 
-        for k, v in steam_env.items():
-            listbox.append(_ReadOnlyKVRow(key=k, value=v))
+        if steam_env:
+            lb = self._make_listbox()
+            for k, v in steam_env.items():
+                lb.append(_ReadOnlyKVRow(key=k, value=v))
+            content.append(self._make_collapsible_section("Steam Launch Options", lb))
+
+        if not self.is_global and global_env:
+            ignore_env = set(self._config.get("global_ignore", {}).get("env", []))
+            per_game_keys = set(initial.keys())
+            lb = self._make_listbox()
+            for k, v in global_env.items():
+                overridden = k in per_game_keys
+                row = _ReadOnlyKVRow(
+                    key=k, value=v, tooltip=_TOOLTIP_GLOBAL,
+                    has_ignore=True, ignored=(k in ignore_env), overridden=overridden,
+                )
+                global_rows.append(row)
+                lb.append(row)
+            content.append(self._make_collapsible_section("Global Options", lb))
+
+        if not self.is_global:
+            self._set_env_slot = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            content.append(self._set_env_slot)
+
+        rows = []
+        lb = self._make_listbox()
+        lb.set_placeholder(self._make_empty_label())
 
         def add_row(key="", value=""):
             row = _KVRow(key=key, value=value)
-            row.connect_remove(lambda r: self._remove_row(r, rows, listbox))
+            row.connect_remove(lambda r: (self._remove_row(r, rows, lb), self._update_override_states()))
+            if not self.is_global:
+                row.connect_key_changed(self._update_override_states)
             rows.append(row)
-            listbox.append(row)
+            lb.append(row)
 
         for k, v in initial.items():
             add_row(k, v)
+
+        section_title = "Per-Game Options" if not self.is_global else "Options"
+        content.append(self._make_section_header(section_title, description))
+        content.append(lb)
 
         add_btn = self._add_button()
         add_btn.connect("clicked", lambda _: add_row())
         outer.append(add_btn)
 
-        return outer, rows
+        return outer, rows, global_rows
 
-    def _build_wrappers_tab(self, initial: list):
-        outer, listbox, rows = self._tab_scaffold(
-            "Commands prepended to the game launch (e.g. mangohud, gamescope …)."
-        )
+    def _build_wrappers_tab(self, initial: list, steam_wrappers: str = "", global_wrappers: list = []):
+        outer, content = self._tab_outer()
+        global_rows = []
+        description = "Commands prepended to the game launch (e.g. mangohud, gamescope …)."
+
+        if steam_wrappers:
+            lb = self._make_listbox()
+            lb.append(_ReadOnlyListRow(value=steam_wrappers))
+            content.append(self._make_collapsible_section("Steam Launch Options", lb))
+
+        if not self.is_global and global_wrappers:
+            ignore_wrappers = set(self._config.get("global_ignore", {}).get("wrappers", []))
+            per_game_binaries = {w.split()[0] for w in initial if w.strip()}
+            lb = self._make_listbox()
+            for w in global_wrappers:
+                binary = w.split()[0] if w.strip() else w
+                overridden = binary in per_game_binaries
+                row = _ReadOnlyListRow(
+                    value=w, row_id=binary, tooltip=_TOOLTIP_GLOBAL,
+                    has_ignore=True, ignored=(binary in ignore_wrappers), overridden=overridden,
+                )
+                global_rows.append(row)
+                lb.append(row)
+            content.append(self._make_collapsible_section("Global Options", lb))
+
+        if not self.is_global:
+            self._set_wrappers_slot = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            content.append(self._set_wrappers_slot)
+
+        rows = []
+        lb = self._make_listbox()
+        lb.set_placeholder(self._make_empty_label())
 
         def add_row(value=""):
             parts = value.split(None, 1)
             cmd = parts[0] if parts else ""
             args = parts[1] if len(parts) > 1 else ""
             row = _WrapperRow(command=cmd, args=args)
-            row.connect_remove(lambda r: self._remove_row(r, rows, listbox))
+            row.connect_remove(lambda r: (self._remove_row(r, rows, lb), self._update_override_states()))
+            if not self.is_global:
+                row.connect_command_changed(self._update_override_states)
+            row.connect_move(rows, lb)
             rows.append(row)
-            listbox.append(row)
+            lb.append(row)
 
         for item in initial:
             add_row(item)
+
+        section_title = "Per-Game Options" if not self.is_global else "Options"
+        content.append(self._make_section_header(
+            section_title,
+            description + "\nWrappers are applied in order, top to bottom.",
+        ))
+        content.append(lb)
 
         add_btn = self._add_button()
         add_btn.connect("clicked", lambda _: add_row())
         outer.append(add_btn)
 
-        return outer, rows
+        return outer, rows, global_rows
 
-    def _build_list_tab(self, description: str, initial: list):
-        outer, listbox, rows = self._tab_scaffold(description)
+    def _build_list_tab(self, description: str, initial: list, steam_args: str = "", global_args: list = []):
+        outer, content = self._tab_outer()
+        global_rows = []
+
+        if steam_args:
+            lb = self._make_listbox()
+            lb.append(_ReadOnlyListRow(value=steam_args))
+            content.append(self._make_collapsible_section("Steam Launch Options", lb))
+
+        if not self.is_global and global_args:
+            ignore_args = set(self._config.get("global_ignore", {}).get("args", []))
+            lb = self._make_listbox()
+            for a in global_args:
+                row = _ReadOnlyListRow(
+                    value=a, tooltip=_TOOLTIP_GLOBAL,
+                    has_ignore=True, ignored=(str(a) in ignore_args), overridden=False,
+                )
+                global_rows.append(row)
+                lb.append(row)
+            content.append(self._make_collapsible_section("Global Options", lb))
+
+        if not self.is_global:
+            self._set_args_slot = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            content.append(self._set_args_slot)
+
+        rows = []
+        lb = self._make_listbox()
+        lb.set_placeholder(self._make_empty_label())
 
         def add_row(value=""):
             row = _ListRow(value=value)
-            row.connect_remove(lambda r: self._remove_row(r, rows, listbox))
+            row.connect_remove(lambda r: self._remove_row(r, rows, lb))
+            row.connect_move(rows, lb)
             rows.append(row)
-            listbox.append(row)
+            lb.append(row)
 
         for item in initial:
             add_row(item)
+
+        section_title = "Per-Game Options" if not self.is_global else "Options"
+        content.append(self._make_section_header(
+            section_title,
+            description + "\nArguments are passed in order, top to bottom.",
+        ))
+        content.append(lb)
 
         add_btn = self._add_button()
         add_btn.connect("clicked", lambda _: add_row())
         outer.append(add_btn)
 
-        return outer, rows
+        return outer, rows, global_rows
 
-    def _tab_scaffold(self, description: str):
+    def _build_global_sets_tab(self):
+        from launchy.config import (
+            get_set_config, delete_set_config, create_set,
+            get_global_config, save_global_config,
+        )
+        from launchy.ui.set_window import SetWindow
+
+        outer, content = self._tab_outer()
+
+        desc = Gtk.Label(
+            label="Sets are named groups of env variables, wrappers, and arguments.\n"
+                  "Enable them per game in each game's Sets tab. "
+                  "Higher sets take priority over lower ones."
+        )
+        desc.add_css_class("dim-label")
+        desc.add_css_class("caption")
+        desc.set_halign(Gtk.Align.START)
+        desc.set_wrap(True)
+        desc.set_margin_start(16)
+        desc.set_margin_end(16)
+        desc.set_margin_top(8)
+        desc.set_margin_bottom(4)
+        content.append(desc)
+
+        lb = self._make_listbox()
+        placeholder = Gtk.Label(label="No sets. Press New Set to create one.")
+        placeholder.add_css_class("dim-label")
+        placeholder.set_margin_top(12)
+        placeholder.set_margin_bottom(12)
+        lb.set_placeholder(placeholder)
+        content.append(lb)
+
+        rows: list = []
+
+        def _save_order():
+            order = [r.set_id for r in rows]
+            cfg = get_global_config()
+            if "sets" not in cfg:
+                cfg["sets"] = {}
+            cfg["sets"]["order"] = order
+            save_global_config(cfg)
+            # keep self._config in sync so _on_save doesn't clobber the order
+            if "sets" not in self._config:
+                self._config["sets"] = {}
+            self._config["sets"]["order"] = order
+
+        def _add_row(set_id, name):
+            row = _GlobalSetRow(set_id=set_id, name=name)
+
+            def on_edit(_row):
+                sw = SetWindow(
+                    set_id=set_id, parent=self,
+                    on_saved=lambda cfg: row.update_name(
+                        cfg.get("general", {}).get("name", "")
+                    ),
+                )
+                sw.present()
+
+            def on_delete(_row):
+                delete_set_config(set_id)
+                if row in rows:
+                    rows.remove(row)
+                lb.remove(row)
+                _save_order()
+
+            row.connect_edit(on_edit)
+            row.connect_delete(on_delete)
+            row.connect_move(rows, lb, _save_order)
+            rows.append(row)
+            lb.append(row)
+            return row
+
+        # Load existing sets
+        all_set_ids = self._config.get("sets", {}).get("order", [])
+        for sid in all_set_ids:
+            try:
+                scfg = get_set_config(sid)
+                _add_row(sid, scfg.get("general", {}).get("name", "Unnamed Set"))
+            except Exception:
+                pass
+
+        # New Set button
+        add_btn = Gtk.Button()
+        add_btn.set_margin_start(16)
+        add_btn.set_margin_end(16)
+        add_btn.set_margin_top(6)
+        add_btn.set_margin_bottom(12)
+        inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        inner.set_halign(Gtk.Align.CENTER)
+        inner.append(Gtk.Image.new_from_icon_name("list-add-symbolic"))
+        inner.append(Gtk.Label(label="New Set"))
+        add_btn.set_child(inner)
+
+        def on_add(_btn):
+            sid = create_set()
+            scfg = get_set_config(sid)
+            row = _add_row(sid, scfg.get("general", {}).get("name", "New Set"))
+            _save_order()
+            sw = SetWindow(
+                set_id=sid, parent=self,
+                on_saved=lambda cfg: row.update_name(
+                    cfg.get("general", {}).get("name", "")
+                ),
+            )
+            sw.present()
+
+        add_btn.connect("clicked", on_add)
+        outer.append(add_btn)
+
+        return outer
+
+    def _build_game_sets_tab(self):
+        from launchy.config import get_set_config, _expand_with_deps
+
+        outer, content = self._tab_outer()
+
+        desc = Gtk.Label(
+            label="Enable sets to apply their env variables, wrappers, and arguments to this game.\n"
+                  "Sets are listed in priority order — higher sets override lower ones."
+        )
+        desc.add_css_class("dim-label")
+        desc.add_css_class("caption")
+        desc.set_halign(Gtk.Align.START)
+        desc.set_wrap(True)
+        desc.set_margin_start(16)
+        desc.set_margin_end(16)
+        desc.set_margin_top(8)
+        desc.set_margin_bottom(4)
+        content.append(desc)
+
+        lb = self._make_listbox()
+        placeholder = Gtk.Label(label="No sets defined. Create sets in Global Settings → Sets.")
+        placeholder.add_css_class("dim-label")
+        placeholder.set_margin_top(12)
+        placeholder.set_margin_bottom(12)
+        lb.set_placeholder(placeholder)
+        content.append(lb)
+
+        gcfg = self._global_config or {}
+        set_order = gcfg.get("sets", {}).get("order", [])
+        explicit_ids = self._explicit_set_ids
+
+        def _refresh_list():
+            children = []
+            child = lb.get_first_child()
+            while child is not None:
+                children.append(child)
+                child = child.get_next_sibling()
+            for c in children:
+                lb.remove(c)
+
+            requirers: dict = {}
+            for eid in explicit_ids:
+                try:
+                    ename = get_set_config(eid).get("general", {}).get("name", "Unnamed Set")
+                    for dep_id in _expand_with_deps({eid}, set_order) - {eid}:
+                        requirers.setdefault(dep_id, []).append(ename)
+                except Exception:
+                    pass
+
+            self._set_rows = []
+            for sid in set_order:
+                try:
+                    scfg = get_set_config(sid)
+                    name = scfg.get("general", {}).get("name", "Unnamed Set")
+                    is_explicit = sid in explicit_ids
+                    required_by = requirers.get(sid)
+                    row = _GameSetRow(set_id=sid, name=name, enabled=is_explicit, required_by=required_by)
+
+                    def on_toggle(btn, set_id=sid):
+                        if btn.get_active():
+                            explicit_ids.add(set_id)
+                        else:
+                            explicit_ids.discard(set_id)
+                        _refresh_list()
+                        self._refresh_set_sections()
+
+                    row.connect_toggled(on_toggle)
+                    lb.append(row)
+                    self._set_rows.append(row)
+                except Exception:
+                    pass
+
+        _refresh_list()
+        return outer
+
+    # ------------------------------------------------------------------
+    # Layout helpers
+    # ------------------------------------------------------------------
+
+    def _tab_outer(self):
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-
-        desc_lbl = Gtk.Label(label=description)
-        desc_lbl.add_css_class("dim-label")
-        desc_lbl.set_wrap(True)
-        desc_lbl.set_halign(Gtk.Align.START)
-        desc_lbl.set_margin_start(16)
-        desc_lbl.set_margin_end(16)
-        desc_lbl.set_margin_top(12)
-        desc_lbl.set_margin_bottom(8)
-        outer.append(desc_lbl)
+        outer.set_vexpand(True)
 
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scrolled.set_vexpand(True)
-
-        listbox = Gtk.ListBox()
-        listbox.set_selection_mode(Gtk.SelectionMode.NONE)
-        listbox.add_css_class("boxed-list")
-        listbox.set_margin_start(16)
-        listbox.set_margin_end(16)
-        listbox.set_margin_top(4)
-        listbox.set_margin_bottom(4)
-
-        scrolled.set_child(listbox)
         outer.append(scrolled)
 
-        rows = []
-        return outer, listbox, rows
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        content.set_margin_top(8)
+        content.set_margin_bottom(8)
+        scrolled.set_child(content)
+
+        return outer, content
+
+    @staticmethod
+    def _make_listbox() -> Gtk.ListBox:
+        lb = Gtk.ListBox()
+        lb.set_selection_mode(Gtk.SelectionMode.NONE)
+        lb.add_css_class("boxed-list")
+        lb.set_margin_start(16)
+        lb.set_margin_end(16)
+        lb.set_margin_top(4)
+        lb.set_margin_bottom(4)
+        return lb
+
+    @staticmethod
+    def _make_collapsible_section(title: str, listbox: Gtk.ListBox) -> Gtk.Widget:
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        card.add_css_class("card")
+        card.set_margin_start(16)
+        card.set_margin_end(16)
+        card.set_margin_top(4)
+        card.set_margin_bottom(4)
+
+        header_btn = Gtk.Button()
+        header_btn.add_css_class("flat")
+
+        hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        hbox.set_margin_start(12)
+        hbox.set_margin_end(8)
+        hbox.set_margin_top(10)
+        hbox.set_margin_bottom(10)
+
+        title_lbl = Gtk.Label(label=title)
+        title_lbl.add_css_class("heading")
+        title_lbl.set_halign(Gtk.Align.START)
+        title_lbl.set_hexpand(True)
+        hbox.append(title_lbl)
+
+        arrow = Gtk.Image.new_from_icon_name("pan-end-symbolic")
+        hbox.append(arrow)
+        header_btn.set_child(hbox)
+        card.append(header_btn)
+
+        listbox.set_margin_start(8)
+        listbox.set_margin_end(8)
+        listbox.set_margin_top(0)
+        listbox.set_margin_bottom(8)
+
+        revealer = Gtk.Revealer()
+        revealer.set_reveal_child(False)
+        revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_DOWN)
+        revealer.set_transition_duration(200)
+        revealer.set_child(listbox)
+        card.append(revealer)
+
+        def _toggle(_btn):
+            exp = not revealer.get_reveal_child()
+            revealer.set_reveal_child(exp)
+            arrow.set_from_icon_name("pan-down-symbolic" if exp else "pan-end-symbolic")
+
+        header_btn.connect("clicked", _toggle)
+        return card
+
+    @staticmethod
+    def _make_section_header(title: str, subtitle: str = "") -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        box.set_margin_start(16)
+        box.set_margin_end(16)
+        box.set_margin_top(8)
+        box.set_margin_bottom(4)
+
+        lbl = Gtk.Label(label=title)
+        lbl.add_css_class("heading")
+        lbl.set_halign(Gtk.Align.START)
+        box.append(lbl)
+
+        if subtitle:
+            sub = Gtk.Label(label=subtitle)
+            sub.add_css_class("dim-label")
+            sub.add_css_class("caption")
+            sub.set_halign(Gtk.Align.START)
+            sub.set_wrap(True)
+            box.append(sub)
+
+        return box
+
+    @staticmethod
+    def _make_empty_label() -> Gtk.Widget:
+        lbl = Gtk.Label(label="No entries. Press Add to add one.")
+        lbl.add_css_class("dim-label")
+        lbl.set_margin_top(12)
+        lbl.set_margin_bottom(12)
+        return lbl
 
     @staticmethod
     def _add_button() -> Gtk.Button:
@@ -296,6 +707,104 @@ class SettingsWindow(Adw.Window):
             rows.remove(row)
         listbox.remove(row)
 
+    @staticmethod
+    def _clear_slot(box: Gtk.Box):
+        children = []
+        child = box.get_first_child()
+        while child:
+            children.append(child)
+            child = child.get_next_sibling()
+        for c in children:
+            box.remove(c)
+
+    def _update_override_states(self):
+        if self.is_global:
+            return
+        per_game_keys = {r.get_key().strip() for r in self._env_rows}
+        for row in self._global_env_rows:
+            row.set_overridden(row.get_id() in per_game_keys)
+        for row in getattr(self, "_set_env_display_rows", []):
+            row.set_overridden(row.get_id() in per_game_keys)
+
+        per_game_bins = {r.get_command().strip() for r in self._wrapper_rows}
+        for row in self._global_wrapper_rows:
+            row.set_overridden(row.get_id() in per_game_bins)
+        for row in getattr(self, "_set_wrappers_display_rows", []):
+            row.set_overridden(row.get_id() in per_game_bins)
+
+    def _refresh_set_sections(self):
+        if self.is_global:
+            return
+        from launchy.config import get_set_config, _expand_with_deps
+        gcfg = self._global_config or {}
+        set_order = gcfg.get("sets", {}).get("order", [])
+        all_enabled = _expand_with_deps(self._explicit_set_ids, set_order)
+        active_sets = []
+        for sid in set_order:
+            if sid in all_enabled:
+                try:
+                    active_sets.append(get_set_config(sid))
+                except Exception:
+                    pass
+
+        _TOOLTIP_SET = "Contributed by active sets — not editable here"
+
+        # Env
+        self._clear_slot(self._set_env_slot)
+        self._set_env_display_rows = []
+        set_env: dict = {}
+        for sc in reversed(active_sets):  # low prio first → high prio wins
+            set_env.update({k: str(v) for k, v in sc.get("env", {}).items()})
+        if set_env:
+            per_game_keys = {r.get_key().strip() for r in self._env_rows}
+            lb = self._make_listbox()
+            for k, v in set_env.items():
+                row = _ReadOnlyKVRow(
+                    key=k, value=v,
+                    tooltip=_TOOLTIP_SET,
+                    overridden=(k in per_game_keys),
+                )
+                self._set_env_display_rows.append(row)
+                lb.append(row)
+            self._set_env_slot.append(self._make_collapsible_section("Set Options", lb))
+
+        # Wrappers
+        self._clear_slot(self._set_wrappers_slot)
+        self._set_wrappers_display_rows = []
+        set_wrappers: list = []
+        set_bins: set = set()
+        for sc in active_sets:  # high prio first
+            for w in sc.get("wrappers", {}).get("pre", []):
+                b = w.split()[0] if w.strip() else w
+                if b not in set_bins:
+                    set_wrappers.append(w)
+                    set_bins.add(b)
+        if set_wrappers:
+            per_game_bins = {r.get_command().strip() for r in self._wrapper_rows}
+            lb = self._make_listbox()
+            for w in set_wrappers:
+                b = w.split()[0] if w.strip() else w
+                row = _ReadOnlyListRow(
+                    value=w,
+                    row_id=b,
+                    tooltip=_TOOLTIP_SET,
+                    overridden=(b in per_game_bins),
+                )
+                self._set_wrappers_display_rows.append(row)
+                lb.append(row)
+            self._set_wrappers_slot.append(self._make_collapsible_section("Set Options", lb))
+
+        # Args
+        self._clear_slot(self._set_args_slot)
+        set_args: list = []
+        for sc in active_sets:
+            set_args.extend(str(a) for a in sc.get("args", {}).get("extra", []))
+        if set_args:
+            lb = self._make_listbox()
+            for a in set_args:
+                lb.append(_ReadOnlyListRow(value=a, tooltip=_TOOLTIP_SET))
+            self._set_args_slot.append(self._make_collapsible_section("Set Options", lb))
+
     # ------------------------------------------------------------------
     # Save
     # ------------------------------------------------------------------
@@ -303,7 +812,6 @@ class SettingsWindow(Adw.Window):
     def _on_save(self, _btn):
         cfg = dict(self._config)
 
-        # -- General
         if "general" not in cfg:
             cfg["general"] = {}
 
@@ -312,10 +820,15 @@ class SettingsWindow(Adw.Window):
             cfg["general"]["countdown"] = int(gw["countdown_spin"].get_value())
 
         idx = gw["proton_row"].get_selected()
-        if 0 <= idx < len(self._proton_versions):
-            cfg["general"]["proton"] = self._proton_versions[idx]["id"]
+        if not self.is_global:
+            if idx == 0:
+                cfg["general"]["proton"] = ""
+            elif 1 <= idx <= len(self._proton_versions):
+                cfg["general"]["proton"] = self._proton_versions[idx - 1]["id"]
+        else:
+            if 0 <= idx < len(self._proton_versions):
+                cfg["general"]["proton"] = self._proton_versions[idx]["id"]
 
-        # -- Environment
         env: dict = {}
         for row in self._env_rows:
             k = row.get_key().strip()
@@ -324,7 +837,6 @@ class SettingsWindow(Adw.Window):
                 env[k] = v
         cfg["env"] = env
 
-        # -- Wrappers
         wrappers = []
         for r in self._wrapper_rows:
             cmd = r.get_command().strip()
@@ -335,7 +847,6 @@ class SettingsWindow(Adw.Window):
             cfg["wrappers"] = {}
         cfg["wrappers"]["pre"] = wrappers
 
-        # -- Arguments
         args_key = "extra" if self.is_global else "game_args"
         args_list = [r.get_value().strip() for r in self._arg_rows if r.get_value().strip()]
         if "args" not in cfg:
@@ -345,8 +856,21 @@ class SettingsWindow(Adw.Window):
         if self.is_global:
             save_global_config(cfg)
         else:
+            ignore_env = [r.get_id() for r in self._global_env_rows if r.is_ignored()]
+            ignore_wrappers = [r.get_id() for r in self._global_wrapper_rows if r.is_ignored()]
+            ignore_args = [r.get_id() for r in self._global_arg_rows if r.is_ignored()]
+            cfg["global_ignore"] = {
+                "env": ignore_env,
+                "wrappers": ignore_wrappers,
+                "args": ignore_args,
+            }
+            cfg["sets"] = {
+                "enabled": [r.set_id for r in self._set_rows if r.is_enabled()],
+            }
             save_game_config(self.appid, cfg)
 
+        if self._on_saved_cb:
+            self._on_saved_cb()
         self.close()
 
 
@@ -354,10 +878,25 @@ class SettingsWindow(Adw.Window):
 # Row widgets
 # ---------------------------------------------------------------------------
 
+_TOOLTIP_STEAM = "Inherited from Steam launch options — not editable here"
+_TOOLTIP_GLOBAL = "Inherited from global settings — not editable here"
+
+
+def _apply_strikethrough(labels: list, strike: bool):
+    attrs = Pango.AttrList()
+    if strike:
+        attrs.insert(Pango.attr_strikethrough_new(True))
+    for lbl in labels:
+        lbl.set_attributes(attrs)
+
+
 class _ReadOnlyKVRow(Gtk.ListBoxRow):
-    def __init__(self, *, key: str, value: str):
+    def __init__(self, *, key: str, value: str, tooltip: str = _TOOLTIP_STEAM,
+                 has_ignore: bool = False, ignored: bool = False, overridden: bool = False):
         super().__init__()
         self.set_activatable(False)
+        self._key_str = key
+        self._overridden = overridden
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         box.set_margin_start(8)
         box.set_margin_end(8)
@@ -365,32 +904,49 @@ class _ReadOnlyKVRow(Gtk.ListBoxRow):
         box.set_margin_bottom(4)
         self.set_child(box)
 
-        key_lbl = Gtk.Label(label=key)
-        key_lbl.add_css_class("dim-label")
-        key_lbl.set_selectable(True)
-        key_lbl.set_hexpand(True)
-        key_lbl.set_halign(Gtk.Align.START)
-        key_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        content_lbl = Gtk.Label(label=f"{key} = {value}")
+        content_lbl.add_css_class("dim-label")
+        content_lbl.set_selectable(True)
+        content_lbl.set_hexpand(True)
+        content_lbl.set_halign(Gtk.Align.START)
+        content_lbl.set_xalign(0.0)
+        content_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        content_lbl.set_tooltip_text(f"{key} = {value}")
 
-        eq = Gtk.Label(label="=")
-        eq.add_css_class("dim-label")
+        self._labels = [content_lbl]
+        box.append(content_lbl)
 
-        val_lbl = Gtk.Label(label=value)
-        val_lbl.add_css_class("dim-label")
-        val_lbl.set_selectable(True)
-        val_lbl.set_hexpand(True)
-        val_lbl.set_halign(Gtk.Align.START)
-        val_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        if has_ignore and not overridden:
+            self._checkbox = Gtk.CheckButton(label="Exclude")
+            self._checkbox.set_active(ignored)
+            self._checkbox.connect("toggled", lambda _: self._update_appearance())
+            box.append(self._checkbox)
+        else:
+            self._checkbox = None
 
         info_btn = Gtk.Button(icon_name="dialog-information-symbolic")
         info_btn.add_css_class("flat")
         info_btn.add_css_class("circular")
-        info_btn.set_tooltip_text("Inherited from Steam launch options — not editable here")
-
-        box.append(key_lbl)
-        box.append(eq)
-        box.append(val_lbl)
+        info_btn.set_tooltip_text(
+            "Overridden by your per-game setting below" if overridden else tooltip
+        )
         box.append(info_btn)
+
+        self._update_appearance()
+
+    def _update_appearance(self):
+        strike = self._overridden or (self._checkbox is not None and self._checkbox.get_active())
+        _apply_strikethrough(self._labels, strike)
+
+    def set_overridden(self, flag: bool):
+        self._overridden = flag
+        self._update_appearance()
+
+    def get_id(self) -> str:
+        return self._key_str
+
+    def is_ignored(self) -> bool:
+        return self._checkbox is not None and self._checkbox.get_active()
 
 
 class _KVRow(Gtk.ListBoxRow):
@@ -406,7 +962,7 @@ class _KVRow(Gtk.ListBoxRow):
         self._key = Gtk.Entry()
         self._key.set_text(key)
         self._key.set_placeholder_text("VARIABLE_NAME")
-        self._key.set_hexpand(True)
+        self._key.set_width_chars(20)
 
         eq = Gtk.Label(label="=")
         eq.add_css_class("dim-label")
@@ -427,6 +983,9 @@ class _KVRow(Gtk.ListBoxRow):
 
     def connect_remove(self, callback):
         self._rm.connect("clicked", lambda _: callback(self))
+
+    def connect_key_changed(self, callback):
+        self._key.connect("changed", lambda _: callback())
 
     def get_key(self) -> str:
         return self._key.get_text()
@@ -458,6 +1017,14 @@ class _WrapperRow(Gtk.ListBoxRow):
         self._args.set_placeholder_text("arguments (optional)")
         self._args.set_hexpand(True)
 
+        self._up = Gtk.Button(icon_name="go-up-symbolic")
+        self._up.add_css_class("flat")
+        self._up.add_css_class("circular")
+
+        self._down = Gtk.Button(icon_name="go-down-symbolic")
+        self._down.add_css_class("flat")
+        self._down.add_css_class("circular")
+
         self._rm = Gtk.Button(icon_name="list-remove-symbolic")
         self._rm.add_css_class("flat")
         self._rm.add_css_class("circular")
@@ -465,16 +1032,91 @@ class _WrapperRow(Gtk.ListBoxRow):
         box.append(self._cmd)
         box.append(sep)
         box.append(self._args)
+        box.append(self._up)
+        box.append(self._down)
         box.append(self._rm)
 
     def connect_remove(self, callback):
         self._rm.connect("clicked", lambda _: callback(self))
+
+    def connect_command_changed(self, callback):
+        self._cmd.connect("changed", lambda _: callback())
+
+    def connect_move(self, rows: list, listbox: Gtk.ListBox):
+        def _move(delta):
+            idx = rows.index(self)
+            new_idx = idx + delta
+            if 0 <= new_idx < len(rows):
+                rows.pop(idx)
+                listbox.remove(self)
+                rows.insert(new_idx, self)
+                listbox.insert(self, new_idx)
+        self._up.connect("clicked", lambda _: _move(-1))
+        self._down.connect("clicked", lambda _: _move(1))
 
     def get_command(self) -> str:
         return self._cmd.get_text()
 
     def get_args(self) -> str:
         return self._args.get_text()
+
+
+class _ReadOnlyListRow(Gtk.ListBoxRow):
+    def __init__(self, *, value: str, row_id: str = None, tooltip: str = _TOOLTIP_STEAM,
+                 has_ignore: bool = False, ignored: bool = False, overridden: bool = False):
+        super().__init__()
+        self.set_activatable(False)
+        self._id = row_id if row_id is not None else value
+        self._overridden = overridden
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        box.set_margin_start(8)
+        box.set_margin_end(8)
+        box.set_margin_top(4)
+        box.set_margin_bottom(4)
+        self.set_child(box)
+
+        val_lbl = Gtk.Label(label=value)
+        val_lbl.add_css_class("dim-label")
+        val_lbl.set_selectable(True)
+        val_lbl.set_hexpand(True)
+        val_lbl.set_halign(Gtk.Align.START)
+        val_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        val_lbl.set_tooltip_text(value)
+
+        self._val_lbl = val_lbl
+        box.append(val_lbl)
+
+        if has_ignore and not overridden:
+            self._checkbox = Gtk.CheckButton(label="Exclude")
+            self._checkbox.set_active(ignored)
+            self._checkbox.connect("toggled", lambda _: self._update_appearance())
+            box.append(self._checkbox)
+        else:
+            self._checkbox = None
+
+        info_btn = Gtk.Button(icon_name="dialog-information-symbolic")
+        info_btn.add_css_class("flat")
+        info_btn.add_css_class("circular")
+        info_btn.set_tooltip_text(
+            "Overridden by your per-game setting below" if overridden else tooltip
+        )
+        box.append(info_btn)
+
+        self._update_appearance()
+
+    def _update_appearance(self):
+        strike = self._overridden or (self._checkbox is not None and self._checkbox.get_active())
+        _apply_strikethrough([self._val_lbl], strike)
+
+    def set_overridden(self, flag: bool):
+        self._overridden = flag
+        self._update_appearance()
+
+    def get_id(self) -> str:
+        return self._id
+
+    def is_ignored(self) -> bool:
+        return self._checkbox is not None and self._checkbox.get_active()
 
 
 class _ListRow(Gtk.ListBoxRow):
@@ -492,15 +1134,142 @@ class _ListRow(Gtk.ListBoxRow):
         self._val.set_placeholder_text("value")
         self._val.set_hexpand(True)
 
+        self._up = Gtk.Button(icon_name="go-up-symbolic")
+        self._up.add_css_class("flat")
+        self._up.add_css_class("circular")
+
+        self._down = Gtk.Button(icon_name="go-down-symbolic")
+        self._down.add_css_class("flat")
+        self._down.add_css_class("circular")
+
         self._rm = Gtk.Button(icon_name="list-remove-symbolic")
         self._rm.add_css_class("flat")
         self._rm.add_css_class("circular")
 
         box.append(self._val)
+        box.append(self._up)
+        box.append(self._down)
         box.append(self._rm)
 
     def connect_remove(self, callback):
         self._rm.connect("clicked", lambda _: callback(self))
 
+    def connect_move(self, rows: list, listbox: Gtk.ListBox):
+        def _move(delta):
+            idx = rows.index(self)
+            new_idx = idx + delta
+            if 0 <= new_idx < len(rows):
+                rows.pop(idx)
+                listbox.remove(self)
+                rows.insert(new_idx, self)
+                listbox.insert(self, new_idx)
+        self._up.connect("clicked", lambda _: _move(-1))
+        self._down.connect("clicked", lambda _: _move(1))
+
     def get_value(self) -> str:
         return self._val.get_text()
+
+
+class _GlobalSetRow(Gtk.ListBoxRow):
+    """Row in global settings Sets tab — shows name with edit/reorder/delete buttons."""
+    def __init__(self, *, set_id: str, name: str):
+        super().__init__()
+        self.set_id = set_id
+        self.set_activatable(False)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        box.set_margin_start(8)
+        box.set_margin_end(8)
+        box.set_margin_top(6)
+        box.set_margin_bottom(6)
+        self.set_child(box)
+
+        self._name_lbl = Gtk.Label(label=name)
+        self._name_lbl.set_hexpand(True)
+        self._name_lbl.set_halign(Gtk.Align.START)
+        self._name_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        box.append(self._name_lbl)
+
+        self._edit_btn = Gtk.Button(icon_name="document-edit-symbolic")
+        self._edit_btn.add_css_class("flat")
+        self._edit_btn.add_css_class("circular")
+        self._edit_btn.set_tooltip_text("Edit set")
+
+        self._up_btn = Gtk.Button(icon_name="go-up-symbolic")
+        self._up_btn.add_css_class("flat")
+        self._up_btn.add_css_class("circular")
+        self._up_btn.set_tooltip_text("Move up (increase priority)")
+
+        self._down_btn = Gtk.Button(icon_name="go-down-symbolic")
+        self._down_btn.add_css_class("flat")
+        self._down_btn.add_css_class("circular")
+        self._down_btn.set_tooltip_text("Move down (decrease priority)")
+
+        self._del_btn = Gtk.Button(icon_name="list-remove-symbolic")
+        self._del_btn.add_css_class("flat")
+        self._del_btn.add_css_class("circular")
+        self._del_btn.set_tooltip_text("Delete set")
+
+        for btn in (self._edit_btn, self._up_btn, self._down_btn, self._del_btn):
+            box.append(btn)
+
+    def update_name(self, name: str):
+        self._name_lbl.set_label(name)
+
+    def connect_edit(self, callback):
+        self._edit_btn.connect("clicked", lambda _: callback(self))
+
+    def connect_delete(self, callback):
+        self._del_btn.connect("clicked", lambda _: callback(self))
+
+    def connect_move(self, rows: list, listbox: Gtk.ListBox, on_reorder):
+        def _move(delta):
+            idx = rows.index(self)
+            new_idx = idx + delta
+            if 0 <= new_idx < len(rows):
+                rows.pop(idx)
+                listbox.remove(self)
+                rows.insert(new_idx, self)
+                listbox.insert(self, new_idx)
+                on_reorder()
+        self._up_btn.connect("clicked", lambda _: _move(-1))
+        self._down_btn.connect("clicked", lambda _: _move(1))
+
+
+class _GameSetRow(Gtk.ListBoxRow):
+    """Row in per-game Sets tab — shows name with enable/disable checkbox."""
+    def __init__(self, *, set_id: str, name: str, enabled: bool, required_by: list = None):
+        super().__init__()
+        self.set_id = set_id
+        self._implicit = bool(required_by)
+        self._explicitly_enabled = enabled
+        self.set_activatable(False)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        box.set_margin_start(8)
+        box.set_margin_end(8)
+        box.set_margin_top(6)
+        box.set_margin_bottom(6)
+        self.set_child(box)
+
+        lbl = Gtk.Label(label=name)
+        lbl.set_hexpand(True)
+        lbl.set_halign(Gtk.Align.START)
+        lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        box.append(lbl)
+
+        self._check = Gtk.CheckButton(label="Enable")
+        if required_by:
+            self._check.set_active(True)
+            self._check.set_sensitive(False)
+            self._check.set_tooltip_text("Required by " + ", ".join(required_by))
+        else:
+            self._check.set_active(enabled)
+        box.append(self._check)
+
+    def connect_toggled(self, callback):
+        if not self._implicit:
+            self._check.connect("toggled", callback)
+
+    def is_enabled(self) -> bool:
+        return self._explicitly_enabled if self._implicit else self._check.get_active()

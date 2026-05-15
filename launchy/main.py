@@ -16,6 +16,21 @@ def _setup_log():
     )
 
 
+def _ensure_global_defaults():
+    from launchy.config import get_global_config, save_global_config
+    cfg = get_global_config()
+    if cfg.get("general", {}).get("proton"):
+        return
+    from launchy.steam import get_available_proton_versions, select_best_proton_id
+    best = select_best_proton_id(get_available_proton_versions())
+    if best:
+        if "general" not in cfg:
+            cfg["general"] = {}
+        cfg["general"]["proton"] = best
+        save_global_config(cfg)
+        logging.debug("auto-selected proton: %s", best)
+
+
 def main():
     _setup_log()
     args = sys.argv[1:]
@@ -23,6 +38,7 @@ def main():
     logging.debug("DISPLAY=%s WAYLAND_DISPLAY=%s XDG_RUNTIME_DIR=%s SteamAppId=%s",
                   os.environ.get("DISPLAY"), os.environ.get("WAYLAND_DISPLAY"),
                   os.environ.get("XDG_RUNTIME_DIR"), os.environ.get("SteamAppId"))
+    _ensure_global_defaults()
 
     if not args or args[0] in ("-h", "--help"):
         _print_help()
@@ -92,9 +108,10 @@ def main():
         runtime = find_steam_runtime_entry_point()
         logging.debug("runtime entry point: %s", runtime)
         if runtime:
-            # Run Proton (and any wrappers) inside the Steam Linux Runtime container
+            final_cmd.extend(wrapper_tokens)
             final_cmd.extend([runtime, "--"])
-        final_cmd.extend(wrapper_tokens)
+        else:
+            final_cmd.extend(wrapper_tokens)
         final_cmd.extend([proton_bin, verb])
     else:
         # Native Linux game — wrappers run outside any container
@@ -109,26 +126,10 @@ def main():
 
 
 def _fallback_proton_binary() -> str | None:
-    from launchy.steam import get_available_proton_versions
-
-    versions = [v for v in get_available_proton_versions() if v.get("binary")]
-
-    def _match(v: dict, *keywords: str) -> bool:
-        hay = (v["name"] + " " + v["id"]).lower()
-        return all(k in hay for k in keywords)
-
-    for predicate in [
-        lambda v: _match(v, "cachyos", "latest"),
-        lambda v: _match(v, "cachyos"),
-        lambda v: _match(v, "ge", "latest"),
-        lambda v: _match(v, "ge-proton") or _match(v, "proton-ge"),
-        lambda v: _match(v, "experimental"),
-    ]:
-        hit = next((v for v in versions if predicate(v)), None)
-        if hit:
-            return hit["binary"]
-
-    return versions[0]["binary"] if versions else None
+    from launchy.steam import get_available_proton_versions, select_best_proton_id, find_proton_binary
+    versions = get_available_proton_versions()
+    best_id = select_best_proton_id(versions)
+    return find_proton_binary(best_id) if best_id else None
 
 
 def _open_settings(appid: str, is_global: bool):
@@ -190,9 +191,10 @@ def _run_ui_inprocess(appid: str) -> str:
 
     try:
         from launchy.steam import get_game_info
-        from launchy.config import get_merged_config
+        from launchy.config import get_merged_config, bootstrap_game_config
         from launchy.ui.launch_window import LaunchApplication
 
+        bootstrap_game_config(appid)
         game_info = get_game_info(appid)
         config = get_merged_config(appid)
 
