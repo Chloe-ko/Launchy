@@ -5,10 +5,68 @@ from launchy.steam import (
     _acf_field,
     _header_only_image,
     _header_image,
+    select_best_proton_id,
     get_steam_launch_env,
     get_steam_launch_wrappers,
     get_steam_launch_args,
 )
+
+
+def _v(name, vid=None, binary="/usr/bin/proton"):
+    return {"name": name, "id": vid or name, "binary": binary}
+
+
+class TestSelectBestProtonId:
+    def test_empty_list_returns_empty(self):
+        assert select_best_proton_id([]) == ""
+
+    def test_no_binary_skipped(self):
+        assert select_best_proton_id([_v("Proton 9", binary=None)]) == ""
+
+    def test_prefers_cachyos_latest(self):
+        versions = [_v("Proton 9"), _v("GE-Proton9"), _v("CachyOS-Proton Latest")]
+        assert select_best_proton_id(versions) == "CachyOS-Proton Latest"
+
+    def test_prefers_cachyos_over_ge_latest(self):
+        versions = [_v("GE-Proton Latest"), _v("CachyOS Proton")]
+        assert select_best_proton_id(versions) == "CachyOS Proton"
+
+    def test_prefers_ge_latest_over_plain_ge(self):
+        versions = [_v("GE-Proton9"), _v("GE-Proton Latest")]
+        assert select_best_proton_id(versions) == "GE-Proton Latest"
+
+    def test_prefers_ge_over_experimental(self):
+        versions = [_v("Proton Experimental"), _v("GE-Proton9")]
+        assert select_best_proton_id(versions) == "GE-Proton9"
+
+    def test_prefers_experimental_over_numbered(self):
+        versions = [_v("Proton 9"), _v("Proton Experimental")]
+        assert select_best_proton_id(versions) == "Proton Experimental"
+
+    def test_falls_back_to_numbered(self):
+        versions = [_v("Proton 9"), _v("Proton 8")]
+        assert select_best_proton_id(versions) == "Proton 9"
+
+    def test_falls_back_to_any(self):
+        versions = [_v("My Custom Tool", vid="custom-tool")]
+        assert select_best_proton_id(versions) == "custom-tool"
+
+    def test_skips_no_binary_prefers_next(self):
+        versions = [
+            _v("CachyOS-Proton Latest", binary=None),
+            _v("Proton 9"),
+        ]
+        assert select_best_proton_id(versions) == "Proton 9"
+
+    def test_launchy_itself_excluded(self):
+        versions = [
+            {"name": "Launchy", "id": "launchy", "binary": "/usr/bin/launchy"},
+            _v("Proton 9"),
+        ]
+        # launchy is filtered by get_available_proton_versions, not select_best
+        # so here it would be treated as any other candidate
+        result = select_best_proton_id([_v("Proton 9")])
+        assert result == "Proton 9"
 
 
 def _make_steam_root(tmp_path: Path) -> Path:

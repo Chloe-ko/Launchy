@@ -213,11 +213,12 @@ def select_best_proton_id(versions: list) -> str:
         lambda v: _match(v, "ge-proton") or _match(v, "proton-ge"),
         lambda v: _match(v, "experimental"),
         lambda v: bool(re.search(r"\d", v["name"])),
+        lambda v: True,
     ]:
         hit = next((v for v in candidates if predicate(v)), None)
         if hit:
             return hit["id"]
-    return candidates[0]["id"] if candidates else ""
+    return ""
 
 
 def find_proton_binary(proton_id: str) -> Optional[str]:

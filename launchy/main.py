@@ -74,6 +74,15 @@ def main():
             os.execvp(game_cmd[0], game_cmd)
         return
 
+    from launchy.steam import get_available_proton_versions
+    if not get_available_proton_versions():
+        print(
+            "Error: no Proton version found. Please install Proton via Steam first.",
+            file=sys.stderr,
+        )
+        logging.error("no Proton versions found, aborting launch")
+        sys.exit(1)
+
     has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
     # Skip UI for appid "0" — pre-game housekeeping calls (d3ddriverquery64, etc.)
     show_ui = has_display and appid != "0"
