@@ -75,7 +75,7 @@ class TestTomlDumps:
         assert self._roundtrip(data) == data
 
     def test_empty_list_roundtrip(self):
-        data = {"args": {"extra": []}}
+        data = {"args": []}
         assert self._roundtrip(data) == data
 
     def test_bool_roundtrip(self):

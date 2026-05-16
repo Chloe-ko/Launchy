@@ -15,7 +15,7 @@ _DEFAULT_GLOBAL = {
     },
     "env": {},
     "wrappers": [],
-    "args": {"extra": []},
+    "args": [],
 }
 
 _DEFAULT_GAME = {
@@ -26,14 +26,14 @@ _DEFAULT_GAME = {
     },
     "env": {},
     "wrappers": [],
-    "args": {"game_args": []},
+    "args": [],
 }
 
 _DEFAULT_SET = {
     "general": {"name": "New Set", "show_in_launch": False, "enabled_by_default": False},
     "env": {},
     "wrappers": [],
-    "args": {"extra": []},
+    "args": [],
 }
 
 
@@ -203,7 +203,7 @@ def get_merged_config(appid: str) -> dict:
         "general": dict(g["general"]),
         "env": {},
         "wrappers": [],
-        "args": {},
+        "args": [],
     }
 
     if p["general"].get("proton"):
@@ -242,12 +242,11 @@ def get_merged_config(appid: str) -> dict:
     merged["wrappers"] = global_pre + set_pre + game_pre
 
     # --- Args: global → sets (highest priority first) → per-game ---
-    global_extra = [a for a in g.get("args", {}).get("extra", []) if str(a) not in ignore_args]
-    set_extra: list = []
+    global_args = [a for a in g.get("args", []) if str(a) not in ignore_args]
+    set_args: list = []
     for sc in active_sets:  # highest priority first
-        set_extra.extend(sc.get("args", {}).get("extra", []))
+        set_args.extend(sc.get("args", []))
 
-    merged["args"]["extra"] = global_extra + set_extra
-    merged["args"]["game_args"] = list(p.get("args", {}).get("game_args", []))
+    merged["args"] = global_args + set_args + list(p.get("args", []))
 
     return merged

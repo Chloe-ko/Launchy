@@ -122,14 +122,13 @@ class SettingsWindow(Adw.Window):
         )
         notebook.append_page(wrappers_page, Gtk.Label(label="Wrappers"))
 
-        args_key = "extra" if self.is_global else "game_args"
         args_desc = (
             "Extra arguments appended after the game command (all games)."
             if self.is_global
             else "Arguments passed directly to the game executable."
         )
-        global_extra = [str(a) for a in gcfg.get("args", {}).get("extra", [])]
-        args_data = self._config.get("args", {}).get(args_key, [])
+        global_extra = [str(a) for a in gcfg.get("args", [])]
+        args_data = self._config.get("args", [])
         args_page, self._arg_rows, self._global_arg_rows = self._build_list_tab(
             args_desc,
             [str(a) for a in args_data],
@@ -928,7 +927,7 @@ class SettingsWindow(Adw.Window):
         self._clear_slot(self._set_args_slot)
         args_groups = []
         for sid, sc in active_sets:
-            args = [str(a) for a in sc.get("args", {}).get("extra", [])]
+            args = [str(a) for a in sc.get("args", [])]
             if not args:
                 continue
             lb = self._make_listbox()
@@ -978,11 +977,8 @@ class SettingsWindow(Adw.Window):
                 wrappers.append(f"{cmd} {args}".strip())
         cfg["wrappers"] = wrappers
 
-        args_key = "extra" if self.is_global else "game_args"
         args_list = [r.get_value().strip() for r in self._arg_rows if r.get_value().strip()]
-        if "args" not in cfg:
-            cfg["args"] = {}
-        cfg["args"][args_key] = args_list
+        cfg["args"] = args_list
 
         if self.is_global:
             save_global_config(cfg)

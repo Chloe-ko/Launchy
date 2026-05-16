@@ -109,8 +109,7 @@ def main():
         proton_bin = _fallback_proton_binary()
 
     pre = config.get("wrappers", [])
-    extra = config.get("args", {}).get("extra", [])
-    game_args = config.get("args", {}).get("game_args", [])
+    args = config.get("args", [])
 
     wrapper_tokens: list[str] = []
     for w in pre:
@@ -131,8 +130,7 @@ def main():
         final_cmd.extend(wrapper_tokens)
 
     final_cmd.extend(game_cmd)
-    final_cmd.extend(extra)
-    final_cmd.extend(game_args)
+    final_cmd.extend(args)
 
     if final_cmd:
         os.execvpe(final_cmd[0], final_cmd, env)

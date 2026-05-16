@@ -64,7 +64,7 @@ class SetWindow(Adw.Window):
 
         args_page, self._arg_rows = self._build_simple_list_tab(
             "Extra arguments for this set.\nArguments are passed in order, top to bottom.",
-            [str(a) for a in self._config.get("args", {}).get("extra", [])],
+            [str(a) for a in self._config.get("args", [])],
             is_wrapper=False,
         )
         notebook.append_page(args_page, Gtk.Label(label="Arguments"))
@@ -249,9 +249,7 @@ class SetWindow(Adw.Window):
         cfg["wrappers"] = wrappers
 
         args_list = [r.get_value().strip() for r in self._arg_rows if r.get_value().strip()]
-        if "args" not in cfg:
-            cfg["args"] = {}
-        cfg["args"]["extra"] = args_list
+        cfg["args"] = args_list
 
         save_set_config(self.set_id, cfg)
         if self._on_saved_cb:

@@ -209,11 +209,11 @@ class TestGetMergedConfig:
 
     def test_global_args_in_extra(self, tmp_path, monkeypatch):
         config_dir, games_dir, _ = _setup_dirs(tmp_path, monkeypatch)
-        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "args": {"extra": ["--global-arg"]}})
-        _write_toml(games_dir / "111.toml", {"args": {"game_args": ["--game-arg"]}})
+        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "args": ["--global-arg"]})
+        _write_toml(games_dir / "111.toml", {"args": ["--game-arg"]})
         result = cfg_module.get_merged_config("111")
-        assert "--global-arg" in result["args"]["extra"]
-        assert "--game-arg" in result["args"]["game_args"]
+        assert "--global-arg" in result["args"]
+        assert "--game-arg" in result["args"]
 
     def test_set_env_applied(self, tmp_path, monkeypatch):
         config_dir, games_dir, sets_dir = _setup_dirs(tmp_path, monkeypatch)
@@ -255,10 +255,10 @@ class TestGetMergedConfig:
     def test_set_args_included(self, tmp_path, monkeypatch):
         config_dir, games_dir, sets_dir = _setup_dirs(tmp_path, monkeypatch)
         sid = str(uuid.uuid4())
-        _write_set(sets_dir, sid, args={"extra": ["--from-set"]})
+        _write_set(sets_dir, sid, args=["--from-set"])
         _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": [sid]})
         _write_toml(games_dir / "111.toml", {"sets": [sid]})
-        assert "--from-set" in cfg_module.get_merged_config("111")["args"]["extra"]
+        assert "--from-set" in cfg_module.get_merged_config("111")["args"]
 
     def test_disabled_set_not_applied(self, tmp_path, monkeypatch):
         config_dir, games_dir, sets_dir = _setup_dirs(tmp_path, monkeypatch)
