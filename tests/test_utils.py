@@ -1,6 +1,6 @@
 import tomllib
 import pytest
-from launchy.utils import toml_dumps, _key, _val
+from launchy.utils import toml_dumps, _key, _val, normalize_env_value
 
 
 class TestKey:
@@ -95,3 +95,41 @@ class TestTomlDumps:
         text = toml_dumps(data)
         assert '"foo.bar"' in text
         assert self._roundtrip(data) == data
+
+
+class TestNormalizeEnvValue:
+    def test_no_quotes_unchanged(self):
+        assert normalize_env_value("winmm.dll=n,b") == "winmm.dll=n,b"
+
+    def test_double_quotes_stripped(self):
+        assert normalize_env_value('"winmm.dll=n,b"') == "winmm.dll=n,b"
+
+    def test_single_quotes_stripped(self):
+        assert normalize_env_value("'winmm.dll=n,b'") == "winmm.dll=n,b"
+
+    def test_escaped_double_quote_kept_literal(self):
+        # User types \"value\" to mean literal quote chars in the value
+        assert normalize_env_value('\\"winmm.dll=n,b\\"') == '"winmm.dll=n,b\\"'
+
+    def test_escaped_single_quote_kept_literal(self):
+        assert normalize_env_value("\\'value\\'") == "'value\\'"
+
+    def test_mismatched_quotes_unchanged(self):
+        # Opening " closing ' — not a valid pair, leave alone
+        assert normalize_env_value('"value\'') == '"value\''
+
+    def test_empty_string_unchanged(self):
+        assert normalize_env_value("") == ""
+
+    def test_single_char_unchanged(self):
+        assert normalize_env_value('"') == '"'
+
+    def test_plain_value_with_equals_unchanged(self):
+        assert normalize_env_value("n,b") == "n,b"
+
+    def test_quotes_only(self):
+        assert normalize_env_value('""') == ""
+
+    def test_value_with_inner_quotes_not_stripped(self):
+        # Only outer pair stripped — inner quotes preserved
+        assert normalize_env_value('"say \\"hi\\""') == 'say \\"hi\\"'

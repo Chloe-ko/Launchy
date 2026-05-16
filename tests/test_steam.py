@@ -272,6 +272,47 @@ class TestGetSteamLaunchWrappers:
         assert get_steam_launch_wrappers("12345") == ""
 
 
+class TestVdfEscapedQuotes:
+    """LaunchOptions values with VDF-escaped quotes (e.g. WINEDLLOVERRIDES=\"...\")."""
+
+    def test_env_with_quoted_value(self, tmp_path, monkeypatch):
+        root = _make_steam_root(tmp_path)
+        monkeypatch.setattr(steam_module, "STEAM_ROOT", root)
+        # VDF stores: "LaunchOptions" "WINEDLLOVERRIDES=\"winmm.dll=n,b\" %command%"
+        _make_localconfig(root, "1001", "12345",
+                          r'WINEDLLOVERRIDES=\"winmm.dll=n,b\" %command%')
+        result = get_steam_launch_env("12345")
+        assert result == {"WINEDLLOVERRIDES": "winmm.dll=n,b"}
+
+    def test_env_with_quoted_value_and_wrappers(self, tmp_path, monkeypatch):
+        root = _make_steam_root(tmp_path)
+        monkeypatch.setattr(steam_module, "STEAM_ROOT", root)
+        _make_localconfig(root, "1001", "12345",
+                          r'WINEDLLOVERRIDES=\"winmm.dll=n,b\" PROTON_USE_NTSYNC=1 mangohud game-performance %command%')
+        env = get_steam_launch_env("12345")
+        assert env["WINEDLLOVERRIDES"] == "winmm.dll=n,b"
+        assert env["PROTON_USE_NTSYNC"] == "1"
+        assert "mangohud" not in env
+
+    def test_wrappers_with_preceding_quoted_env(self, tmp_path, monkeypatch):
+        root = _make_steam_root(tmp_path)
+        monkeypatch.setattr(steam_module, "STEAM_ROOT", root)
+        _make_localconfig(root, "1001", "12345",
+                          r'WINEDLLOVERRIDES=\"winmm.dll=n,b\" mangohud game-performance %command%')
+        result = get_steam_launch_wrappers("12345")
+        assert "mangohud" in result
+        assert "game-performance" in result
+        assert "WINEDLLOVERRIDES" not in result
+
+    def test_multiple_escaped_env_vars(self, tmp_path, monkeypatch):
+        root = _make_steam_root(tmp_path)
+        monkeypatch.setattr(steam_module, "STEAM_ROOT", root)
+        _make_localconfig(root, "1001", "12345",
+                          r'FOO=\"a=b\" BAR=\"c,d\" %command%')
+        result = get_steam_launch_env("12345")
+        assert result == {"FOO": "a=b", "BAR": "c,d"}
+
+
 class TestGetSteamLaunchArgs:
     def test_args_after_command(self, tmp_path, monkeypatch):
         root = _make_steam_root(tmp_path)

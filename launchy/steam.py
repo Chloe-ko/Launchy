@@ -339,9 +339,9 @@ def _get_localconfig_launch_options(appid: str) -> str:
                     depth -= 1
                 i += 1
             block = text[start : i - 1]
-            lo = re.search(r'"LaunchOptions"\s+"([^"]*)"', block, re.IGNORECASE)
+            lo = re.search(r'"LaunchOptions"\s+"((?:[^"\\]|\\.)*)"', block, re.IGNORECASE)
             if lo:
-                return lo.group(1)
+                return re.sub(r'\\(.)', r'\1', lo.group(1))
         except Exception:
             continue
     return ""

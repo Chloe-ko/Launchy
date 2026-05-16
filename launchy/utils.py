@@ -1,4 +1,4 @@
-"""TOML serialization utilities."""
+"""TOML serialization and string utilities."""
 
 
 def toml_dumps(data: dict) -> str:
@@ -47,3 +47,16 @@ def _val(v) -> str:
             return inline
         return "[\n  " + ",\n  ".join(items) + ",\n]"
     return f'"{v}"'
+
+
+def normalize_env_value(v: str) -> str:
+    """Strip shell-style surrounding quotes from an env var value.
+
+    Leading backslash before a quote escapes it — strips the backslash and
+    keeps the literal quote characters instead of treating them as delimiters.
+    """
+    if len(v) >= 2 and v[0] == "\\" and v[1] in ('"', "'"):
+        return v[1:]
+    if len(v) >= 2 and v[0] in ('"', "'") and v[-1] == v[0]:
+        return v[1:-1]
+    return v

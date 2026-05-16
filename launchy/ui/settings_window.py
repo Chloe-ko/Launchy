@@ -8,6 +8,7 @@ from launchy.config import (
     save_global_config, save_game_config,
 )
 from launchy.steam import get_available_proton_versions
+from launchy.utils import normalize_env_value
 
 
 class SettingsApplication(Adw.Application):
@@ -976,7 +977,7 @@ class SettingsWindow(Adw.Window):
         env: dict = {}
         for row in self._env_rows:
             k = row.get_key().strip()
-            v = row.get_value()
+            v = normalize_env_value(row.get_value())
             if k:
                 env[k] = v
         cfg["env"] = env
