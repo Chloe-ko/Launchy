@@ -23,7 +23,7 @@ def _collect(data: dict, path: list, parts: list):
 
 
 def _key(k: str) -> str:
-    if all(c.isalnum() or c in "-_" for c in k):
+    if k and all(c.isalnum() or c in "-_" for c in k):
         return k
     return '"' + k.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
