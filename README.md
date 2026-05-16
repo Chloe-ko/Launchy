@@ -13,7 +13,7 @@ A configurable Steam compatibility tool that intercepts game launches to show a 
 ## Features
 
 - **Launch window** — game art, ProtonDB rating, Proton selector, countdown before auto-launch
-- **Skip countdown** — per-game toggle to bypass the launch window entirely and launch instantly
+- **Skip countdown** — per-game toggle in game settings to bypass the launch window and launch instantly
 - **Sets** — reusable named config profiles (env vars, wrappers, args) that can be enabled per-game
 - **Per-game and global settings** — Proton version, environment variables, pre-launch wrappers, and extra arguments
 - **Application launcher entry** — `launchy settings` available from your desktop launcher
@@ -67,9 +67,9 @@ Config files live in `~/.config/launchy/`:
 | Setting | Behaviour |
 |---------|-----------|
 | `env` | Global → active sets → per-game; last writer wins per key |
-| `wrappers.pre` | Global + sets + per-game concatenated; binary deduplication across sets |
-| `args` | All layers appended to final command |
-| `general.proton` | Per-game wins if set, otherwise global |
+| `wrappers` | Global + sets + per-game concatenated; binary deduplication across sets |
+| `args` | Global + sets + per-game appended to final command |
+| `proton` | Per-game wins if set, otherwise global |
 
 ## CLI
 
