@@ -19,8 +19,10 @@ makedepends=(
     'python-setuptools'
 )
 install="${pkgname}.install"
-source=("${pkgname}-${pkgver}.tar.gz::https://github.com/Chloe-ko/launchy/archive/v${pkgver}.tar.gz")
-sha256sums=('SKIP')
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/Chloe-ko/launchy/archive/v${pkgver}.tar.gz"
+        "launchy.install")
+sha256sums=('SKIP'
+            'SKIP')
 
 build() {
     cd "Launchy-${pkgver}"
