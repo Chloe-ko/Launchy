@@ -35,7 +35,7 @@ sudo pacman -S python gtk4 libadwaita python-gobject
 ### From AUR
 
 ```bash
-yay -S launchy
+yay -S launchy-steam
 launchy install
 ```
 
