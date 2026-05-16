@@ -14,7 +14,7 @@ _DEFAULT_GLOBAL = {
         "proton": "",
     },
     "env": {},
-    "wrappers": {"pre": []},
+    "wrappers": [],
     "args": {"extra": []},
 }
 
@@ -25,14 +25,14 @@ _DEFAULT_GAME = {
         "skip_countdown": False,
     },
     "env": {},
-    "wrappers": {"pre": []},
+    "wrappers": [],
     "args": {"game_args": []},
 }
 
 _DEFAULT_SET = {
     "general": {"name": "New Set", "show_in_launch": False, "enabled_by_default": False},
     "env": {},
-    "wrappers": {"pre": []},
+    "wrappers": [],
     "args": {"extra": []},
 }
 
@@ -202,7 +202,7 @@ def get_merged_config(appid: str) -> dict:
     merged = {
         "general": dict(g["general"]),
         "env": {},
-        "wrappers": {},
+        "wrappers": [],
         "args": {},
     }
 
@@ -219,14 +219,14 @@ def get_merged_config(appid: str) -> dict:
     merged["env"] = eff_env
 
     # --- Wrappers: global → sets (highest priority binary wins) → per-game ---
-    game_pre = list(p.get("wrappers", {}).get("pre", []))
+    game_pre = list(p.get("wrappers", []))
     game_bins = {w.split()[0] for w in game_pre if w.strip()}
 
     # Collect set wrappers: highest priority set first; skip binaries already claimed
     set_pre = []
     set_bins: set = set()
     for sc in active_sets:  # highest priority first
-        for w in sc.get("wrappers", {}).get("pre", []):
+        for w in sc.get("wrappers", []):
             b = w.split()[0] if w.strip() else w
             if b not in set_bins and b not in game_bins:
                 set_pre.append(w)
@@ -234,12 +234,12 @@ def get_merged_config(appid: str) -> dict:
 
     # Global wrappers: skip ignored and binaries claimed by sets or per-game
     global_pre = []
-    for w in g.get("wrappers", {}).get("pre", []):
+    for w in g.get("wrappers", []):
         b = w.split()[0] if w.strip() else w
         if b not in ignore_wrappers and b not in game_bins and b not in set_bins:
             global_pre.append(w)
 
-    merged["wrappers"]["pre"] = global_pre + set_pre + game_pre
+    merged["wrappers"] = global_pre + set_pre + game_pre
 
     # --- Args: global → sets (highest priority first) → per-game ---
     global_extra = [a for a in g.get("args", {}).get("extra", []) if str(a) not in ignore_args]

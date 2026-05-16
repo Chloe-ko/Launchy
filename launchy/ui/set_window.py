@@ -57,7 +57,7 @@ class SetWindow(Adw.Window):
         wrappers_page, self._wrapper_rows = self._build_simple_list_tab(
             "Commands prepended to the game launch (e.g. mangohud, gamescope …).\n"
             "Wrappers are applied in order, top to bottom.",
-            [str(w) for w in self._config.get("wrappers", {}).get("pre", [])],
+            [str(w) for w in self._config.get("wrappers", [])],
             is_wrapper=True,
         )
         notebook.append_page(wrappers_page, Gtk.Label(label="Wrappers"))
@@ -246,9 +246,7 @@ class SetWindow(Adw.Window):
             if cmd:
                 args = r.get_args().strip()
                 wrappers.append(f"{cmd} {args}".strip())
-        if "wrappers" not in cfg:
-            cfg["wrappers"] = {}
-        cfg["wrappers"]["pre"] = wrappers
+        cfg["wrappers"] = wrappers
 
         args_list = [r.get_value().strip() for r in self._arg_rows if r.get_value().strip()]
         if "args" not in cfg:

@@ -113,8 +113,8 @@ class SettingsWindow(Adw.Window):
         )
         notebook.append_page(env_page, Gtk.Label(label="Environment"))
 
-        global_wrappers = [str(w) for w in gcfg.get("wrappers", {}).get("pre", [])]
-        wrappers = self._config.get("wrappers", {}).get("pre", [])
+        global_wrappers = [str(w) for w in gcfg.get("wrappers", [])]
+        wrappers = self._config.get("wrappers", [])
         wrappers_page, self._wrapper_rows, self._global_wrapper_rows = self._build_wrappers_tab(
             [str(w) for w in wrappers],
             self._steam_wrappers,
@@ -911,7 +911,7 @@ class SettingsWindow(Adw.Window):
         wrapper_groups = []
         for sid, sc in active_sets:
             wrappers = []
-            for w in sc.get("wrappers", {}).get("pre", []):
+            for w in sc.get("wrappers", []):
                 b = w.split()[0] if w.strip() else w
                 if b not in claimed_bins:
                     wrappers.append(w)
@@ -980,9 +980,7 @@ class SettingsWindow(Adw.Window):
             if cmd:
                 args = r.get_args().strip()
                 wrappers.append(f"{cmd} {args}".strip())
-        if "wrappers" not in cfg:
-            cfg["wrappers"] = {}
-        cfg["wrappers"]["pre"] = wrappers
+        cfg["wrappers"] = wrappers
 
         args_key = "extra" if self.is_global else "game_args"
         args_list = [r.get_value().strip() for r in self._arg_rows if r.get_value().strip()]

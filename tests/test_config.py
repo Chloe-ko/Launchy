@@ -243,11 +243,11 @@ class TestGetMergedConfig:
     def test_wrapper_dedup_high_priority_wins(self, tmp_path, monkeypatch):
         config_dir, games_dir, sets_dir = _setup_dirs(tmp_path, monkeypatch)
         s_high, s_low = str(uuid.uuid4()), str(uuid.uuid4())
-        _write_set(sets_dir, s_high, wrappers={"pre": ["mangohud --dlsym"]})
-        _write_set(sets_dir, s_low, wrappers={"pre": ["mangohud"]})
+        _write_set(sets_dir, s_high, wrappers=["mangohud --dlsym"])
+        _write_set(sets_dir, s_low, wrappers=["mangohud"])
         _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": {"order": [s_high, s_low]}})
         _write_toml(games_dir / "111.toml", {"sets": {"enabled": [s_high, s_low]}})
-        wrappers = cfg_module.get_merged_config("111")["wrappers"]["pre"]
+        wrappers = cfg_module.get_merged_config("111")["wrappers"]
         mangohud_entries = [w for w in wrappers if w.split()[0] == "mangohud"]
         assert len(mangohud_entries) == 1
         assert mangohud_entries[0] == "mangohud --dlsym"

@@ -108,7 +108,7 @@ def main():
     if not proton_bin:
         proton_bin = _fallback_proton_binary()
 
-    pre = config.get("wrappers", {}).get("pre", [])
+    pre = config.get("wrappers", [])
     extra = config.get("args", {}).get("extra", [])
     game_args = config.get("args", {}).get("game_args", [])
 

@@ -71,7 +71,7 @@ class TestTomlDumps:
         assert self._roundtrip(data) == data
 
     def test_list_of_strings(self):
-        data = {"wrappers": {"pre": ["mangohud", "gamescope -W 1920"]}}
+        data = {"wrappers": ["mangohud", "gamescope -W 1920"]}
         assert self._roundtrip(data) == data
 
     def test_empty_list_roundtrip(self):
