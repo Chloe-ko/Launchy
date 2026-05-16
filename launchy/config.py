@@ -128,6 +128,13 @@ def get_games_with_skip_countdown() -> list[str]:
     return result
 
 
+def get_games_with_explicit_config() -> list[str]:
+    """Return appids of all games that have an explicit launchy config file."""
+    if not GAMES_DIR.exists():
+        return []
+    return [p.stem for p in GAMES_DIR.glob("*.toml")]
+
+
 def bootstrap_game_config(appid: str):
     """If no per-game config exists, create one with default-enabled sets."""
     path = GAMES_DIR / f"{appid}.toml"

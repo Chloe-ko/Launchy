@@ -301,3 +301,55 @@ class TestBootstrapGameConfig:
         _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": [sid]})
         cfg_module.bootstrap_game_config("333")
         assert not (games_dir / "333.toml").exists()
+
+
+# ---------------------------------------------------------------------------
+# get_games_with_explicit_config
+# ---------------------------------------------------------------------------
+
+class TestGetGamesWithExplicitConfig:
+    def test_no_games_dir_returns_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(cfg_module, "GAMES_DIR", tmp_path / "nonexistent")
+        assert cfg_module.get_games_with_explicit_config() == []
+
+    def test_empty_games_dir_returns_empty(self, tmp_path, monkeypatch):
+        games_dir = tmp_path / "games"
+        games_dir.mkdir()
+        monkeypatch.setattr(cfg_module, "GAMES_DIR", games_dir)
+        assert cfg_module.get_games_with_explicit_config() == []
+
+    def test_single_game_returned(self, tmp_path, monkeypatch):
+        games_dir = tmp_path / "games"
+        games_dir.mkdir()
+        monkeypatch.setattr(cfg_module, "GAMES_DIR", games_dir)
+        _write_toml(games_dir / "12345.toml", {"general": {}})
+        assert cfg_module.get_games_with_explicit_config() == ["12345"]
+
+    def test_multiple_games_all_returned(self, tmp_path, monkeypatch):
+        games_dir = tmp_path / "games"
+        games_dir.mkdir()
+        monkeypatch.setattr(cfg_module, "GAMES_DIR", games_dir)
+        _write_toml(games_dir / "111.toml", {"general": {}})
+        _write_toml(games_dir / "222.toml", {"env": {"FOO": "bar"}})
+        _write_toml(games_dir / "333.toml", {"wrappers": ["mangohud"]})
+        result = cfg_module.get_games_with_explicit_config()
+        assert set(result) == {"111", "222", "333"}
+
+    def test_non_toml_files_excluded(self, tmp_path, monkeypatch):
+        games_dir = tmp_path / "games"
+        games_dir.mkdir()
+        monkeypatch.setattr(cfg_module, "GAMES_DIR", games_dir)
+        _write_toml(games_dir / "12345.toml", {})
+        (games_dir / "readme.txt").write_text("ignored")
+        (games_dir / "12345.bak").write_text("ignored")
+        result = cfg_module.get_games_with_explicit_config()
+        assert result == ["12345"]
+
+    def test_returns_stem_not_full_path(self, tmp_path, monkeypatch):
+        games_dir = tmp_path / "games"
+        games_dir.mkdir()
+        monkeypatch.setattr(cfg_module, "GAMES_DIR", games_dir)
+        _write_toml(games_dir / "999888777.toml", {})
+        result = cfg_module.get_games_with_explicit_config()
+        assert result == ["999888777"]
+        assert not any("/" in r or ".toml" in r for r in result)

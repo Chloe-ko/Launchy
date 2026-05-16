@@ -106,7 +106,7 @@ class SettingsWindow(Adw.Window):
 
         global_env = {k: str(v) for k, v in gcfg.get("env", {}).items()}
         env_data = self._config.get("env", {})
-        env_page, self._env_rows, self._global_env_rows = self._build_kv_tab(
+        env_page, self._env_rows, self._global_env_rows, self._env_lb, self._env_add_row = self._build_kv_tab(
             "Key=value pairs added to the game's environment.",
             {k: str(v) for k, v in env_data.items()},
             self._steam_env,
@@ -116,7 +116,7 @@ class SettingsWindow(Adw.Window):
 
         global_wrappers = [str(w) for w in gcfg.get("wrappers", [])]
         wrappers = self._config.get("wrappers", [])
-        wrappers_page, self._wrapper_rows, self._global_wrapper_rows = self._build_wrappers_tab(
+        wrappers_page, self._wrapper_rows, self._global_wrapper_rows, self._wrappers_lb, self._wrappers_add_row = self._build_wrappers_tab(
             [str(w) for w in wrappers],
             self._steam_wrappers,
             global_wrappers if not self.is_global else [],
@@ -130,7 +130,7 @@ class SettingsWindow(Adw.Window):
         )
         global_extra = [str(a) for a in gcfg.get("args", [])]
         args_data = self._config.get("args", [])
-        args_page, self._arg_rows, self._global_arg_rows = self._build_list_tab(
+        args_page, self._arg_rows, self._global_arg_rows, self._args_lb, self._args_add_row = self._build_list_tab(
             args_desc,
             [str(a) for a in args_data],
             self._steam_args,
@@ -233,6 +233,18 @@ class SettingsWindow(Adw.Window):
             )
             group.add(skip_row)
             widgets["skip_row"] = skip_row
+
+        if not self.is_global:
+            import_group = Adw.PreferencesGroup(title="Import")
+            box.append(import_group)
+            import_row = Adw.ActionRow(
+                title="Copy from another game",
+                subtitle="Replace env vars, wrappers, arguments, and sets from another game's config.",
+            )
+            import_row.set_activatable(True)
+            import_row.add_suffix(Gtk.Image.new_from_icon_name("pan-end-symbolic"))
+            import_row.connect("activated", lambda _: self._open_game_picker())
+            import_group.add(import_row)
 
         if self.is_global:
             self._skip_group = Adw.PreferencesGroup(
@@ -359,7 +371,7 @@ class SettingsWindow(Adw.Window):
         add_btn.connect("clicked", lambda _: add_row())
         outer.append(add_btn)
 
-        return outer, rows, global_rows
+        return outer, rows, global_rows, lb, add_row
 
     def _build_wrappers_tab(self, initial: list, steam_wrappers: str = "", global_wrappers: list = []):
         outer, content = self._tab_outer()
@@ -420,7 +432,7 @@ class SettingsWindow(Adw.Window):
         add_btn.connect("clicked", lambda _: add_row())
         outer.append(add_btn)
 
-        return outer, rows, global_rows
+        return outer, rows, global_rows, lb, add_row
 
     def _build_list_tab(self, description: str, initial: list, steam_args: str = "", global_args: list = []):
         outer, content = self._tab_outer()
@@ -472,7 +484,7 @@ class SettingsWindow(Adw.Window):
         add_btn.connect("clicked", lambda _: add_row())
         outer.append(add_btn)
 
-        return outer, rows, global_rows
+        return outer, rows, global_rows, lb, add_row
 
     def _build_global_sets_tab(self):
         from launchy.config import (
@@ -653,6 +665,7 @@ class SettingsWindow(Adw.Window):
                 except Exception:
                     pass
 
+        self._refresh_set_list = _refresh_list
         _refresh_list()
         return outer
 
@@ -947,6 +960,41 @@ class SettingsWindow(Adw.Window):
             args_groups.append((sc.get("general", {}).get("name", "Unnamed Set"), lb))
         if args_groups:
             self._set_args_slot.append(self._make_collapsible_multi("Sets", args_groups))
+
+    # ------------------------------------------------------------------
+    # Import
+    # ------------------------------------------------------------------
+
+    def _open_game_picker(self):
+        def on_select(appid: str):
+            from launchy.config import get_game_config
+            self._apply_import(get_game_config(appid))
+
+        picker = _GamePickerWindow(parent=self, on_select=on_select, current_appid=self.appid)
+        picker.present()
+
+    def _apply_import(self, src_cfg: dict):
+        for r in list(self._env_rows):
+            self._remove_row(r, self._env_rows, self._env_lb)
+        for k, v in src_cfg.get("env", {}).items():
+            self._env_add_row(str(k), str(v))
+
+        for r in list(self._wrapper_rows):
+            self._remove_row(r, self._wrapper_rows, self._wrappers_lb)
+        for w in src_cfg.get("wrappers", []):
+            self._wrappers_add_row(str(w))
+
+        for r in list(self._arg_rows):
+            self._remove_row(r, self._arg_rows, self._args_lb)
+        for a in src_cfg.get("args", []):
+            self._args_add_row(str(a))
+
+        self._explicit_set_ids.clear()
+        self._explicit_set_ids.update(src_cfg.get("sets", []))
+        if hasattr(self, "_refresh_set_list"):
+            self._refresh_set_list()
+        self._refresh_set_sections()
+        self._update_override_states()
 
     # ------------------------------------------------------------------
     # Save
@@ -1372,6 +1420,130 @@ class _GlobalSetRow(Gtk.ListBoxRow):
                 on_reorder()
         self._up_btn.connect("clicked", lambda _: _move(-1))
         self._down_btn.connect("clicked", lambda _: _move(1))
+
+
+class _GamePickerWindow(Adw.Window):
+    """Window for picking a source game to copy settings from."""
+    def __init__(self, *, parent: Adw.Window, on_select, current_appid: str):
+        super().__init__()
+        self.set_transient_for(parent)
+        self.set_modal(True)
+        self.set_title("Copy Settings From")
+        self.set_default_size(480, 520)
+        self._on_select = on_select
+        self._current_appid = current_appid
+        self._build_ui()
+
+    def _build_ui(self):
+        from launchy.config import get_games_with_explicit_config, get_game_config
+        from launchy.steam import get_game_info
+
+        toolbar = Adw.ToolbarView()
+        self.set_content(toolbar)
+
+        header = Adw.HeaderBar()
+        toolbar.add_top_bar(header)
+
+        content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        toolbar.set_content(content_box)
+
+        search_entry = Gtk.SearchEntry()
+        search_entry.set_placeholder_text("Search games…")
+        search_entry.set_margin_start(16)
+        search_entry.set_margin_end(16)
+        search_entry.set_margin_top(8)
+        search_entry.set_margin_bottom(4)
+        content_box.append(search_entry)
+
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scrolled.set_vexpand(True)
+        content_box.append(scrolled)
+
+        lb = Gtk.ListBox()
+        lb.set_selection_mode(Gtk.SelectionMode.NONE)
+        lb.add_css_class("boxed-list")
+        lb.set_margin_start(16)
+        lb.set_margin_end(16)
+        lb.set_margin_top(12)
+        lb.set_margin_bottom(12)
+        scrolled.set_child(lb)
+
+        appids = [a for a in get_games_with_explicit_config() if a != self._current_appid]
+        entries = []
+        search_texts: dict = {}
+        for appid in appids:
+            try:
+                info = get_game_info(appid)
+                cfg_name = get_game_config(appid).get("general", {}).get("name", "")
+                name = cfg_name or info.get("name") or f"App {appid}"
+                img_path = info.get("header_image_path")
+            except Exception:
+                name = f"App {appid}"
+                img_path = None
+            entries.append((appid, name, img_path))
+        entries.sort(key=lambda x: x[1].lower())
+
+        thumb_w, thumb_h = 60, 30
+        for appid, name, img_path in entries:
+            row = Adw.ActionRow(title=name, subtitle=f"App {appid}")
+            row.set_activatable(True)
+
+            if img_path:
+                try:
+                    from gi.repository import GdkPixbuf
+                    pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(img_path, thumb_w * 2, -1, True)
+                    pic = Gtk.Picture.new_for_pixbuf(pb)
+                    pic.set_content_fit(Gtk.ContentFit.COVER)
+                    pic.set_size_request(thumb_w, thumb_h)
+                    pic.set_margin_top(6)
+                    pic.set_margin_bottom(6)
+                    pic.set_margin_start(4)
+                    row.add_prefix(pic)
+                except Exception:
+                    pass
+
+            row.add_suffix(Gtk.Image.new_from_icon_name("pan-end-symbolic"))
+            row.connect("activated", lambda _, aid=appid, n=name: self._on_row_activated(aid, n))
+            search_texts[row] = (name.lower(), appid.lower())
+            lb.append(row)
+
+        placeholder = Gtk.Label(label="No other games with Launchy configuration found.")
+        placeholder.add_css_class("dim-label")
+        placeholder.set_margin_top(24)
+        placeholder.set_margin_bottom(24)
+        lb.set_placeholder(placeholder)
+
+        def _filter_row(row):
+            query = search_entry.get_text().lower().strip()
+            if not query:
+                return True
+            name_l, appid_l = search_texts.get(row, ("", ""))
+            return query in name_l or query in appid_l
+
+        lb.set_filter_func(_filter_row)
+        search_entry.connect("search-changed", lambda _: lb.invalidate_filter())
+
+    def _on_row_activated(self, appid: str, name: str):
+        dialog = Adw.AlertDialog(
+            heading="Copy Settings?",
+            body=(
+                f"The current editor contents for environment variables, wrappers, "
+                f"arguments, and sets will be replaced with those from \"{name}\"."
+            ),
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("copy", "Copy Settings")
+        dialog.set_response_appearance("copy", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", lambda _d, r: self._on_confirm(r, appid))
+        dialog.present(self)
+
+    def _on_confirm(self, response: str, appid: str):
+        if response == "copy":
+            self._on_select(appid)
+            self.close()
 
 
 class _GameSetRow(Gtk.ListBoxRow):

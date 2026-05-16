@@ -20,3 +20,8 @@ include = ["launchy*"]
 
 [tool.setuptools.package-data]
 "launchy" = ["logo.svg"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
