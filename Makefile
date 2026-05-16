@@ -9,14 +9,13 @@ SITE_PKGS   := $(PREFIX)/lib/python$(PY_VER)/site-packages
 install:
 	install -d "$(SITE_PKGS)/launchy/ui"
 	install -m644 launchy/__init__.py launchy/__main__.py launchy/config.py launchy/install.py \
-		launchy/main.py launchy/steam.py launchy/utils.py \
+		launchy/main.py launchy/steam.py launchy/utils.py launchy/logo.svg \
 		"$(SITE_PKGS)/launchy/"
 	install -m644 launchy/ui/__init__.py launchy/ui/launch_window.py \
 		launchy/ui/settings_window.py launchy/ui/set_window.py \
 		"$(SITE_PKGS)/launchy/ui/"
-	install -m644 data/logo-pixel-heart.svg "$(SITE_PKGS)/launchy/logo.svg"
 	install -Dm755 bin/launchy "$(BINDIR)/launchy"
-	install -Dm644 data/logo-pixel-heart.svg "$(PREFIX)/share/icons/hicolor/scalable/apps/launchy.svg"
+	install -Dm644 launchy/logo.svg "$(PREFIX)/share/icons/hicolor/scalable/apps/launchy.svg"
 	install -Dm644 data/launchy.desktop "$(PREFIX)/share/applications/launchy.desktop"
 	@echo ""
 	@echo "Installed to $(PREFIX)."

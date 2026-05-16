@@ -19,4 +19,4 @@ where = ["."]
 include = ["launchy*"]
 
 [tool.setuptools.package-data]
-"*" = []
+"launchy" = ["logo.svg"]

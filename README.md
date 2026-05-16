@@ -1,4 +1,4 @@
-<img src="data/logo-pixel-heart.svg" width="80" align="left" style="margin-right: 16px"/>
+<img src="launchy/logo.svg" width="80" align="left" style="margin-right: 16px"/>
 
 # Launchy
 

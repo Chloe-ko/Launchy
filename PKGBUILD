@@ -18,7 +18,6 @@ makedepends=(
     'python-wheel'
     'python-setuptools'
 )
-install="${pkgname}.install"
 source=("${pkgname}-${pkgver}.tar.gz::https://github.com/Chloe-ko/launchy/archive/v${pkgver}.tar.gz")
 sha256sums=('SKIP')
 
@@ -31,8 +30,8 @@ package() {
     cd "${pkgname}-${pkgver}"
     python -m installer --destdir="$pkgdir" dist/*.whl
 
-    # Install the shell-based install helper
-    install -Dm755 install.sh "$pkgdir/usr/share/launchy/install.sh"
+    install -Dm644 launchy/logo.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/launchy.svg"
+    install -Dm644 data/launchy.desktop "$pkgdir/usr/share/applications/launchy.desktop"
 
     # Reference VDF (the Python launcher writes this itself, but useful for reference)
     install -Dm644 data/compatibilitytool.vdf "$pkgdir/usr/share/launchy/compatibilitytool.vdf"
