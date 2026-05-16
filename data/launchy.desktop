@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Launchy
+Comment=Steam Proton game launcher settings
+Exec=launchy settings
+Icon=launchy
+Type=Application
+Categories=Game;Utility;
+Terminal=false

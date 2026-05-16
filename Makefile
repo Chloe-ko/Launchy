@@ -14,8 +14,10 @@ install:
 	install -m644 launchy/ui/__init__.py launchy/ui/launch_window.py \
 		launchy/ui/settings_window.py launchy/ui/set_window.py \
 		"$(SITE_PKGS)/launchy/ui/"
-	install -m644 data/logo-heart.svg "$(SITE_PKGS)/launchy/logo.svg"
+	install -m644 data/logo-pixel-heart.svg "$(SITE_PKGS)/launchy/logo.svg"
 	install -Dm755 bin/launchy "$(BINDIR)/launchy"
+	install -Dm644 data/logo-pixel-heart.svg "$(PREFIX)/share/icons/hicolor/scalable/apps/launchy.svg"
+	install -Dm644 data/launchy.desktop "$(PREFIX)/share/applications/launchy.desktop"
 	@echo ""
 	@echo "Installed to $(PREFIX)."
 	@echo "Make sure $(BINDIR) is in your PATH, then run: launchy install"
@@ -24,6 +26,8 @@ uninstall:
 	-launchy uninstall
 	rm -rf "$(SITE_PKGS)/launchy"
 	rm -f  "$(BINDIR)/launchy"
+	rm -f  "$(PREFIX)/share/icons/hicolor/scalable/apps/launchy.svg"
+	rm -f  "$(PREFIX)/share/applications/launchy.desktop"
 	@echo "Uninstalled from $(PREFIX)."
 
 # Register / deregister with Steam (separate step)
