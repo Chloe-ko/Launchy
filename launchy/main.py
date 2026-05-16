@@ -64,6 +64,10 @@ def main():
         result = _run_ui_inprocess(args[1])
         sys.exit(0 if result == "launch" else 1)
 
+    if args[0] == "--show-error" and len(args) >= 2:
+        _show_error_inprocess(args[1])
+        return
+
     verb = args[0]
     game_cmd = args[1:]
     appid = os.environ.get("SteamAppId", "0")
@@ -74,16 +78,16 @@ def main():
             os.execvp(game_cmd[0], game_cmd)
         return
 
+    has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
     from launchy.steam import get_available_proton_versions
     if not get_available_proton_versions():
-        print(
-            "Error: no Proton version found. Please install Proton via Steam first.",
-            file=sys.stderr,
-        )
+        msg = "No Proton version found. Please install Proton via Steam first."
         logging.error("no Proton versions found, aborting launch")
+        print(f"Error: {msg}", file=sys.stderr)
+        if has_display:
+            _show_error_subprocess(msg)
         sys.exit(1)
-
-    has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
     # Skip UI for appid "0" — pre-game housekeeping calls (d3ddriverquery64, etc.)
     show_ui = has_display and appid != "0"
 
@@ -139,6 +143,40 @@ def _fallback_proton_binary() -> str | None:
     versions = get_available_proton_versions()
     best_id = select_best_proton_id(versions)
     return find_proton_binary(best_id) if best_id else None
+
+
+def _show_error_subprocess(message: str):
+    import subprocess
+    env = {k: os.environ[k] for k in _SUBPROCESS_KEEP if k in os.environ}
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "launchy", "--show-error", message],
+            env=env,
+        )
+    except Exception as e:
+        logging.warning("could not show error dialog: %s", e)
+
+
+def _show_error_inprocess(message: str):
+    try:
+        import gi
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+    except (ImportError, ValueError) as e:
+        logging.warning("GTK unavailable for error dialog: %s", e)
+        return
+
+    app = Adw.Application(application_id="io.github.chloe_ko.Launchy.error")
+
+    def on_activate(_app):
+        dialog = Adw.AlertDialog(heading="No Proton Found", body=message)
+        dialog.add_response("ok", "OK")
+        dialog.connect("response", lambda d, r: _app.quit())
+        dialog.present(None)
+
+    app.connect("activate", on_activate)
+    app.run([])
 
 
 def _open_settings(appid: str, is_global: bool):
