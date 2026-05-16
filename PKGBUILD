@@ -1,11 +1,11 @@
-# Maintainer: Your Name <your@email.com>
+# Maintainer: Chloe <chloesviel@gmail.com>
 pkgname=launchy
 pkgver=1.0.0
 pkgrel=1
 pkgdesc="Configurable Steam compatibility tool launcher with per-game settings UI"
 arch=('any')
-url="https://github.com/YOURUSERNAME/launchy"
-license=('MIT')
+url="https://github.com/Chloe-ko/launchy"
+license=('GPL2')
 depends=(
     'python>=3.11'
     'python-gobject'
@@ -19,7 +19,7 @@ makedepends=(
     'python-setuptools'
 )
 install="${pkgname}.install"
-source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/v${pkgver}.tar.gz")
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/Chloe-ko/launchy/archive/v${pkgver}.tar.gz")
 sha256sums=('SKIP')
 
 build() {
