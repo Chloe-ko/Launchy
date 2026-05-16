@@ -31,7 +31,7 @@ package() {
     python -m installer --destdir="$pkgdir" dist/*.whl
 
     install -Dm644 launchy/logo.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/launchy.svg"
-    install -Dm644 data/launchy.desktop "$pkgdir/usr/share/applications/launchy.desktop"
+    install -Dm644 launchy.desktop "$pkgdir/usr/share/applications/launchy.desktop"
 
     # Reference VDF (the Python launcher writes this itself, but useful for reference)
     install -Dm644 data/compatibilitytool.vdf "$pkgdir/usr/share/launchy/compatibilitytool.vdf"

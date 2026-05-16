@@ -16,7 +16,7 @@ install:
 		"$(SITE_PKGS)/launchy/ui/"
 	install -Dm755 bin/launchy "$(BINDIR)/launchy"
 	install -Dm644 launchy/logo.svg "$(PREFIX)/share/icons/hicolor/scalable/apps/launchy.svg"
-	install -Dm644 data/launchy.desktop "$(PREFIX)/share/applications/launchy.desktop"
+	install -Dm644 launchy.desktop "$(PREFIX)/share/applications/launchy.desktop"
 	@echo ""
 	@echo "Installed to $(PREFIX)."
 	@echo "Make sure $(BINDIR) is in your PATH, then run: launchy install"
