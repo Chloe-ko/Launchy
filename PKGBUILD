@@ -5,7 +5,7 @@ pkgrel=1
 pkgdesc="Configurable Steam compatibility tool launcher with per-game settings UI"
 arch=('any')
 url="https://github.com/Chloe-ko/launchy"
-license=('GPL2')
+license=('GPL3')
 depends=(
     'python>=3.11'
     'python-gobject'
