@@ -1,0 +1,27 @@
+app-id: io.github.chloe_ko.Launchy
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: launchy
+
+finish-args:
+  # Display
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # Full host filesystem access is required for the compat tool mode:
+  # Launchy exec()s Proton and game binaries from arbitrary Steam library paths.
+  - --filesystem=host
+  # Hardware access for game controllers, GPUs, etc.
+  - --device=all
+  # Games may require network access; passed through from Steam's environment.
+  - --share=network
+
+modules:
+  - name: launchy
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-deps --no-build-isolation .
+    sources:
+      - type: dir
+        path: .

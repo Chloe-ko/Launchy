@@ -3,6 +3,7 @@ from pathlib import Path
 import launchy.steam as steam_module
 from launchy.steam import (
     _acf_field,
+    _find_steam_root,
     _header_only_image,
     _header_image,
     select_best_proton_id,
@@ -337,3 +338,29 @@ class TestGetSteamLaunchArgs:
     def test_no_steam_root_returns_empty(self, monkeypatch):
         monkeypatch.setattr(steam_module, "STEAM_ROOT", None)
         assert get_steam_launch_args("12345") == ""
+
+
+class TestFindSteamRoot:
+    def test_finds_native_steam(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        native = tmp_path / ".local" / "share" / "Steam"
+        (native / "steamapps").mkdir(parents=True)
+        assert _find_steam_root() == native
+
+    def test_finds_flatpak_steam(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        flatpak = tmp_path / ".var" / "app" / "com.valvesoftware.Steam" / "data" / "Steam"
+        (flatpak / "steamapps").mkdir(parents=True)
+        assert _find_steam_root() == flatpak
+
+    def test_native_steam_preferred_over_flatpak(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        native = tmp_path / ".local" / "share" / "Steam"
+        (native / "steamapps").mkdir(parents=True)
+        flatpak = tmp_path / ".var" / "app" / "com.valvesoftware.Steam" / "data" / "Steam"
+        (flatpak / "steamapps").mkdir(parents=True)
+        assert _find_steam_root() == native
+
+    def test_returns_none_when_nothing_found(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        assert _find_steam_root() is None

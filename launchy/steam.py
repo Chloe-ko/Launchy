@@ -9,6 +9,7 @@ def _find_steam_root() -> Optional[Path]:
         Path.home() / ".steam" / "root",
         Path.home() / ".steam" / "steam",
         Path.home() / ".local" / "share" / "Steam",
+        Path.home() / ".var" / "app" / "com.valvesoftware.Steam" / "data" / "Steam",
         Path("/usr/share/steam"),
     ]:
         if (p / "steamapps").exists():
