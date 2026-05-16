@@ -191,10 +191,14 @@ def _run_ui_inprocess(appid: str) -> str:
 
     try:
         from launchy.steam import get_game_info
-        from launchy.config import get_merged_config, bootstrap_game_config
+        from launchy.config import get_merged_config, bootstrap_game_config, get_game_config
         from launchy.ui.launch_window import LaunchApplication
 
         bootstrap_game_config(appid)
+
+        if get_game_config(appid).get("general", {}).get("skip_countdown", False):
+            return "launch"
+
         game_info = get_game_info(appid)
         config = get_merged_config(appid)
 

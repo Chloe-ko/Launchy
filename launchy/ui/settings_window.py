@@ -162,6 +162,9 @@ class SettingsWindow(Adw.Window):
         box.set_margin_bottom(16)
         scrolled.set_child(box)
 
+        self._skip_group = None
+        self._skip_rows = []
+
         group = Adw.PreferencesGroup()
         box.append(group)
 
@@ -221,7 +224,79 @@ class SettingsWindow(Adw.Window):
         group.add(proton_row)
         widgets["proton_row"] = proton_row
 
+        if self.is_global:
+            self._skip_group = Adw.PreferencesGroup(
+                title="Skip Countdown",
+                description="Games that skip the launch window and launch instantly.",
+            )
+            box.append(self._skip_group)
+            self._rebuild_skip_list()
+
         return scrolled, widgets
+
+    def _rebuild_skip_list(self):
+        from launchy.config import get_games_with_skip_countdown, get_game_config
+        for row in self._skip_rows:
+            self._skip_group.remove(row)
+        self._skip_rows = []
+
+        appids = get_games_with_skip_countdown()
+        if not appids:
+            row = Adw.ActionRow(title="No games configured")
+            row.set_sensitive(False)
+            self._skip_group.add(row)
+            self._skip_rows.append(row)
+            return
+
+        entries = []
+        for appid in appids:
+            cfg_name = get_game_config(appid).get("general", {}).get("name", "")
+            img_path = None
+            steam_name = ""
+            try:
+                from launchy.steam import get_game_info
+                info = get_game_info(appid)
+                steam_name = info.get("name", "")
+                img_path = info.get("header_image_path")
+            except Exception:
+                pass
+            entries.append((appid, cfg_name or steam_name or f"App {appid}", img_path))
+        entries.sort(key=lambda x: x[1].lower())
+
+        thumb_w, thumb_h = 60, 30
+        for appid, name, img_path in entries:
+            row = Adw.ActionRow(title=name, subtitle=f"App {appid}")
+
+            if img_path:
+                try:
+                    from gi.repository import GdkPixbuf
+                    pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(img_path, thumb_w * 2, -1, True)
+                    pic = Gtk.Picture.new_for_pixbuf(pb)
+                    pic.set_content_fit(Gtk.ContentFit.COVER)
+                    pic.set_size_request(thumb_w, thumb_h)
+                    pic.set_margin_top(6)
+                    pic.set_margin_bottom(6)
+                    pic.set_margin_start(4)
+                    row.add_prefix(pic)
+                except Exception:
+                    pass
+
+            btn = Gtk.Button(label="Remove")
+            btn.add_css_class("destructive-action")
+            btn.set_valign(Gtk.Align.CENTER)
+            btn.connect("clicked", lambda _, aid=appid: self._remove_skip(aid))
+            row.add_suffix(btn)
+            self._skip_group.add(row)
+            self._skip_rows.append(row)
+
+    def _remove_skip(self, appid: str):
+        from launchy.config import get_game_config, save_game_config
+        cfg = get_game_config(appid)
+        if "general" not in cfg:
+            cfg["general"] = {}
+        cfg["general"]["skip_countdown"] = False
+        save_game_config(appid, cfg)
+        self._rebuild_skip_list()
 
     def _build_kv_tab(self, description: str, initial: dict, steam_env: dict = {}, global_env: dict = {}):
         outer, content = self._tab_outer()
@@ -607,6 +682,64 @@ class SettingsWindow(Adw.Window):
         return lb
 
     @staticmethod
+    def _make_collapsible_multi(title: str, groups: list) -> Gtk.Widget:
+        """Collapsible card whose expanded area shows multiple (set_name, listbox) groups."""
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        card.add_css_class("card")
+        card.set_margin_start(16)
+        card.set_margin_end(16)
+        card.set_margin_top(4)
+        card.set_margin_bottom(4)
+
+        header_btn = Gtk.Button()
+        header_btn.add_css_class("flat")
+        hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        hbox.set_margin_start(12)
+        hbox.set_margin_end(8)
+        hbox.set_margin_top(10)
+        hbox.set_margin_bottom(10)
+        title_lbl = Gtk.Label(label=title)
+        title_lbl.add_css_class("heading")
+        title_lbl.set_halign(Gtk.Align.START)
+        title_lbl.set_hexpand(True)
+        hbox.append(title_lbl)
+        arrow = Gtk.Image.new_from_icon_name("pan-end-symbolic")
+        hbox.append(arrow)
+        header_btn.set_child(hbox)
+        card.append(header_btn)
+
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        inner.set_margin_bottom(8)
+        for name, lb in groups:
+            name_lbl = Gtk.Label(label=name)
+            name_lbl.add_css_class("heading")
+            name_lbl.set_halign(Gtk.Align.START)
+            name_lbl.set_margin_start(20)
+            name_lbl.set_margin_top(10)
+            name_lbl.set_margin_bottom(8)
+            inner.append(name_lbl)
+            lb.set_margin_start(8)
+            lb.set_margin_end(8)
+            lb.set_margin_top(0)
+            lb.set_margin_bottom(0)
+            inner.append(lb)
+
+        revealer = Gtk.Revealer()
+        revealer.set_reveal_child(False)
+        revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_DOWN)
+        revealer.set_transition_duration(200)
+        revealer.set_child(inner)
+        card.append(revealer)
+
+        def _toggle(_btn):
+            exp = not revealer.get_reveal_child()
+            revealer.set_reveal_child(exp)
+            arrow.set_from_icon_name("pan-down-symbolic" if exp else "pan-end-symbolic")
+
+        header_btn.connect("clicked", _toggle)
+        return card
+
+    @staticmethod
     def _make_collapsible_section(title: str, listbox: Gtk.ListBox) -> Gtk.Widget:
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.add_css_class("card")
@@ -739,71 +872,75 @@ class SettingsWindow(Adw.Window):
         gcfg = self._global_config or {}
         set_order = gcfg.get("sets", {}).get("order", [])
         all_enabled = _expand_with_deps(self._explicit_set_ids, set_order)
-        active_sets = []
+        active_sets = []  # [(sid, sc), ...] highest priority first
         for sid in set_order:
             if sid in all_enabled:
                 try:
-                    active_sets.append(get_set_config(sid))
+                    active_sets.append((sid, get_set_config(sid)))
                 except Exception:
                     pass
 
         _TOOLTIP_SET = "Contributed by active sets — not editable here"
 
-        # Env
+        # Env — one group per set inside a single collapsible
         self._clear_slot(self._set_env_slot)
         self._set_env_display_rows = []
-        set_env: dict = {}
-        for sc in reversed(active_sets):  # low prio first → high prio wins
-            set_env.update({k: str(v) for k, v in sc.get("env", {}).items()})
-        if set_env:
-            per_game_keys = {r.get_key().strip() for r in self._env_rows}
+        claimed_keys: set = set()
+        per_game_keys = {r.get_key().strip() for r in self._env_rows}
+        env_groups = []
+        for sid, sc in active_sets:
+            sc_env = {k: str(v) for k, v in sc.get("env", {}).items()}
+            visible = {k: v for k, v in sc_env.items() if k not in claimed_keys}
+            claimed_keys.update(sc_env.keys())
+            if not visible:
+                continue
             lb = self._make_listbox()
-            for k, v in set_env.items():
-                row = _ReadOnlyKVRow(
-                    key=k, value=v,
-                    tooltip=_TOOLTIP_SET,
-                    overridden=(k in per_game_keys),
-                )
+            for k, v in visible.items():
+                row = _ReadOnlyKVRow(key=k, value=v, tooltip=_TOOLTIP_SET, overridden=(k in per_game_keys))
                 self._set_env_display_rows.append(row)
                 lb.append(row)
-            self._set_env_slot.append(self._make_collapsible_section("Set Options", lb))
+            env_groups.append((sc.get("general", {}).get("name", "Unnamed Set"), lb))
+        if env_groups:
+            self._set_env_slot.append(self._make_collapsible_multi("Sets", env_groups))
 
-        # Wrappers
+        # Wrappers — one group per set inside a single collapsible
         self._clear_slot(self._set_wrappers_slot)
         self._set_wrappers_display_rows = []
-        set_wrappers: list = []
-        set_bins: set = set()
-        for sc in active_sets:  # high prio first
+        claimed_bins: set = set()
+        per_game_bins = {r.get_command().strip() for r in self._wrapper_rows}
+        wrapper_groups = []
+        for sid, sc in active_sets:
+            wrappers = []
             for w in sc.get("wrappers", {}).get("pre", []):
                 b = w.split()[0] if w.strip() else w
-                if b not in set_bins:
-                    set_wrappers.append(w)
-                    set_bins.add(b)
-        if set_wrappers:
-            per_game_bins = {r.get_command().strip() for r in self._wrapper_rows}
+                if b not in claimed_bins:
+                    wrappers.append(w)
+                    claimed_bins.add(b)
+            if not wrappers:
+                continue
             lb = self._make_listbox()
-            for w in set_wrappers:
+            for w in wrappers:
                 b = w.split()[0] if w.strip() else w
-                row = _ReadOnlyListRow(
-                    value=w,
-                    row_id=b,
-                    tooltip=_TOOLTIP_SET,
-                    overridden=(b in per_game_bins),
-                )
+                row = _ReadOnlyListRow(value=w, row_id=b, tooltip=_TOOLTIP_SET, overridden=(b in per_game_bins))
                 self._set_wrappers_display_rows.append(row)
                 lb.append(row)
-            self._set_wrappers_slot.append(self._make_collapsible_section("Set Options", lb))
+            wrapper_groups.append((sc.get("general", {}).get("name", "Unnamed Set"), lb))
+        if wrapper_groups:
+            self._set_wrappers_slot.append(self._make_collapsible_multi("Sets", wrapper_groups))
 
-        # Args
+        # Args — one group per set inside a single collapsible
         self._clear_slot(self._set_args_slot)
-        set_args: list = []
-        for sc in active_sets:
-            set_args.extend(str(a) for a in sc.get("args", {}).get("extra", []))
-        if set_args:
+        args_groups = []
+        for sid, sc in active_sets:
+            args = [str(a) for a in sc.get("args", {}).get("extra", [])]
+            if not args:
+                continue
             lb = self._make_listbox()
-            for a in set_args:
+            for a in args:
                 lb.append(_ReadOnlyListRow(value=a, tooltip=_TOOLTIP_SET))
-            self._set_args_slot.append(self._make_collapsible_section("Set Options", lb))
+            args_groups.append((sc.get("general", {}).get("name", "Unnamed Set"), lb))
+        if args_groups:
+            self._set_args_slot.append(self._make_collapsible_multi("Sets", args_groups))
 
     # ------------------------------------------------------------------
     # Save

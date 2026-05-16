@@ -22,6 +22,7 @@ _DEFAULT_GAME = {
     "general": {
         "name": "",
         "proton": "",
+        "skip_countdown": False,
     },
     "env": {},
     "wrappers": {"pre": []},
@@ -113,6 +114,18 @@ def create_set() -> str:
     set_id = str(uuid.uuid4())
     save_set_config(set_id, dict(_DEFAULT_SET))
     return set_id
+
+
+def get_games_with_skip_countdown() -> list[str]:
+    """Return appids of all games that have skip_countdown=True."""
+    result = []
+    if not GAMES_DIR.exists():
+        return result
+    for path in GAMES_DIR.glob("*.toml"):
+        cfg = _load(path)
+        if cfg.get("general", {}).get("skip_countdown", False):
+            result.append(path.stem)
+    return result
 
 
 def bootstrap_game_config(appid: str):

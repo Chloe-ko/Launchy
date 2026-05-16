@@ -53,6 +53,10 @@ def get_game_info(appid: str) -> dict:
         if img:
             info["image_path"] = str(img)
 
+        header = _header_only_image(appid)
+        if header:
+            info["header_image_path"] = str(header)
+
         logo = _logo_image(appid)
         if logo:
             info["logo_path"] = str(logo)
@@ -101,6 +105,28 @@ def _logo_image(appid: str) -> Optional[Path]:
                 candidate = sub / "logo.png"
                 if candidate.exists():
                     return candidate
+    return None
+
+
+def _header_only_image(appid: str) -> Optional[Path]:
+    """Return library_header.jpg specifically (not hero/capsule fallbacks)."""
+    if not STEAM_ROOT:
+        return None
+    cache = STEAM_ROOT / "appcache" / "librarycache"
+    appid_dir = cache / appid
+    if appid_dir.is_dir():
+        candidate = appid_dir / "library_header.jpg"
+        if candidate.exists():
+            return candidate
+        for sub in appid_dir.iterdir():
+            if sub.is_dir():
+                candidate = sub / "library_header.jpg"
+                if candidate.exists():
+                    return candidate
+    for name in (f"{appid}_header.jpg", f"{appid}_header.png"):
+        p = cache / name
+        if p.exists():
+            return p
     return None
 
 

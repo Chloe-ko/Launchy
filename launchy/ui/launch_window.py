@@ -54,6 +54,7 @@ class LaunchWindow(Adw.ApplicationWindow):
 
         self.set_title("Launchy")
         self.set_default_size(1000, 650)
+        self.set_resizable(False)
 
         self._build_ui()
         self._start_countdown()
@@ -305,6 +306,17 @@ class LaunchWindow(Adw.ApplicationWindow):
             row.append(val)
             row.append(btn)
             _add_row(row)
+
+        # Skip countdown
+        skip_val = game_cfg.get("general", {}).get("skip_countdown", False)
+        skip_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self._skip_check = Gtk.CheckButton(label="Launch instantly (skip countdown)")
+        self._skip_check.set_active(skip_val)
+        self._skip_check.set_hexpand(True)
+        self._skip_check.connect("toggled", self._on_skip_toggled)
+        skip_box.append(_key_label("Launch:"))
+        skip_box.append(self._skip_check)
+        _add_row(skip_box)
 
         return lb
 
@@ -652,6 +664,14 @@ class LaunchWindow(Adw.ApplicationWindow):
             self._cd_paused = True
             self._cd_pause_btn.set_icon_name("media-playback-start-symbolic")
             self._stop_countdown()
+
+    def _on_skip_toggled(self, check):
+        from launchy.config import get_game_config, save_game_config
+        cfg = get_game_config(self.appid)
+        if "general" not in cfg:
+            cfg["general"] = {}
+        cfg["general"]["skip_countdown"] = check.get_active()
+        save_game_config(self.appid, cfg)
 
     def _on_settings_closed(self, _win):
         from launchy.config import get_merged_config
