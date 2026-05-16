@@ -12,3 +12,9 @@ post_install() {
 post_upgrade() {
     post_install
 }
+
+pre_remove() {
+    if command -v launchy &>/dev/null; then
+        launchy uninstall || true
+    fi
+}

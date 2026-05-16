@@ -18,6 +18,7 @@ makedepends=(
     'python-wheel'
     'python-setuptools'
 )
+install="${pkgname}.install"
 source=("${pkgname}-${pkgver}.tar.gz::https://github.com/Chloe-ko/launchy/archive/v${pkgver}.tar.gz")
 sha256sums=('SKIP')
 
