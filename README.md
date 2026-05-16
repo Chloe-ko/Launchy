@@ -80,12 +80,6 @@ launchy settings             Open global settings
 launchy settings <appid>     Open per-game settings
 ```
 
-## Motivation
-
-Launchy was born out of love for [SteamTinkerLaunch](https://github.com/sonic2kk/steamtinkerlaunch) — a fantastic tool that showed how much you can do by wrapping Steam's compat tool interface. Over time STL became harder to maintain and some of its features stopped working reliably with modern Proton and Steam. Rather than patch around an aging shell-script architecture, this felt like a good opportunity to build something simpler and more focused from scratch.
-
-Thanks to the STL project for the inspiration.
-
 ## License
 
 GPLv3 — see [LICENSE](LICENSE).
