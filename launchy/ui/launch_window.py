@@ -378,7 +378,7 @@ class LaunchWindow(Adw.ApplicationWindow):
             self._sets_box.remove(c)
 
         gcfg = get_global_config()
-        set_order = gcfg.get("sets", {}).get("order", [])
+        set_order = gcfg.get("sets", [])
 
         show_sets = []
         for sid in set_order:
@@ -398,7 +398,7 @@ class LaunchWindow(Adw.ApplicationWindow):
         self._sets_box.set_visible(True)
 
         game_cfg = get_game_config(self.appid)
-        explicit_ids = set(game_cfg.get("sets", {}).get("enabled", []))
+        explicit_ids = set(game_cfg.get("sets", []))
 
         # dep_id → names of explicitly-enabled sets that (transitively) require it
         requirers: dict = {}
@@ -436,14 +436,12 @@ class LaunchWindow(Adw.ApplicationWindow):
                         self._cd_pause_btn.set_icon_name("media-playback-start-symbolic")
                         self._stop_countdown()
                     gcfg2 = get_game_config(self.appid)
-                    cur_enabled = set(gcfg2.get("sets", {}).get("enabled", []))
+                    cur_enabled = set(gcfg2.get("sets", []))
                     if btn.get_active():
                         cur_enabled.add(set_id)
                     else:
                         cur_enabled.discard(set_id)
-                    if "sets" not in gcfg2:
-                        gcfg2["sets"] = {}
-                    gcfg2["sets"]["enabled"] = list(cur_enabled)
+                    gcfg2["sets"] = list(cur_enabled)
                     save_game_config(self.appid, gcfg2)
                     self._refresh_sets_section()
 

@@ -135,7 +135,7 @@ def bootstrap_game_config(appid: str):
         return
     g = get_global_config()
     default_enabled = []
-    for sid in g.get("sets", {}).get("order", []):
+    for sid in g.get("sets", []):
         try:
             if get_set_config(sid).get("general", {}).get("enabled_by_default", False):
                 default_enabled.append(sid)
@@ -143,7 +143,7 @@ def bootstrap_game_config(appid: str):
             pass
     if default_enabled:
         cfg = dict(_DEFAULT_GAME)
-        cfg["sets"] = {"enabled": default_enabled}
+        cfg["sets"] = default_enabled
         save_game_config(appid, cfg)
 
 
@@ -179,7 +179,7 @@ def get_merged_config(appid: str) -> dict:
     ignore_args = set(ignore.get("args", []))
 
     # Active sets in priority order (index 0 = highest priority)
-    all_set_ids = g.get("sets", {}).get("order", [])
+    all_set_ids = g.get("sets", [])
     if not (GAMES_DIR / f"{appid}.toml").exists():
         enabled_ids = set()
         for sid in all_set_ids:
@@ -189,7 +189,7 @@ def get_merged_config(appid: str) -> dict:
             except Exception:
                 pass
     else:
-        enabled_ids = set(p.get("sets", {}).get("enabled", []))
+        enabled_ids = set(p.get("sets", []))
     enabled_ids = _expand_with_deps(enabled_ids, all_set_ids)
     active_sets = []
     for sid in all_set_ids:

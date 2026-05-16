@@ -219,8 +219,8 @@ class TestGetMergedConfig:
         config_dir, games_dir, sets_dir = _setup_dirs(tmp_path, monkeypatch)
         sid = str(uuid.uuid4())
         _write_set(sets_dir, sid, env={"SET_VAR": "hello"})
-        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": {"order": [sid]}})
-        _write_toml(games_dir / "111.toml", {"sets": {"enabled": [sid]}})
+        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": [sid]})
+        _write_toml(games_dir / "111.toml", {"sets": [sid]})
         assert cfg_module.get_merged_config("111")["env"]["SET_VAR"] == "hello"
 
     def test_high_priority_set_wins_env_conflict(self, tmp_path, monkeypatch):
@@ -228,15 +228,15 @@ class TestGetMergedConfig:
         s_high, s_low = str(uuid.uuid4()), str(uuid.uuid4())
         _write_set(sets_dir, s_high, env={"FOO": "high"})
         _write_set(sets_dir, s_low, env={"FOO": "low"})
-        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": {"order": [s_high, s_low]}})
-        _write_toml(games_dir / "111.toml", {"sets": {"enabled": [s_high, s_low]}})
+        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": [s_high, s_low]})
+        _write_toml(games_dir / "111.toml", {"sets": [s_high, s_low]})
         assert cfg_module.get_merged_config("111")["env"]["FOO"] == "high"
 
     def test_per_game_env_overrides_set_env(self, tmp_path, monkeypatch):
         config_dir, games_dir, sets_dir = _setup_dirs(tmp_path, monkeypatch)
         sid = str(uuid.uuid4())
         _write_set(sets_dir, sid, env={"FOO": "from-set"})
-        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": {"order": [sid]}})
+        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": [sid]})
         _write_toml(games_dir / "111.toml", {"sets": {"enabled": [sid]}, "env": {"FOO": "from-game"}})
         assert cfg_module.get_merged_config("111")["env"]["FOO"] == "from-game"
 
@@ -245,8 +245,8 @@ class TestGetMergedConfig:
         s_high, s_low = str(uuid.uuid4()), str(uuid.uuid4())
         _write_set(sets_dir, s_high, wrappers=["mangohud --dlsym"])
         _write_set(sets_dir, s_low, wrappers=["mangohud"])
-        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": {"order": [s_high, s_low]}})
-        _write_toml(games_dir / "111.toml", {"sets": {"enabled": [s_high, s_low]}})
+        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": [s_high, s_low]})
+        _write_toml(games_dir / "111.toml", {"sets": [s_high, s_low]})
         wrappers = cfg_module.get_merged_config("111")["wrappers"]
         mangohud_entries = [w for w in wrappers if w.split()[0] == "mangohud"]
         assert len(mangohud_entries) == 1
@@ -256,16 +256,16 @@ class TestGetMergedConfig:
         config_dir, games_dir, sets_dir = _setup_dirs(tmp_path, monkeypatch)
         sid = str(uuid.uuid4())
         _write_set(sets_dir, sid, args={"extra": ["--from-set"]})
-        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": {"order": [sid]}})
-        _write_toml(games_dir / "111.toml", {"sets": {"enabled": [sid]}})
+        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": [sid]})
+        _write_toml(games_dir / "111.toml", {"sets": [sid]})
         assert "--from-set" in cfg_module.get_merged_config("111")["args"]["extra"]
 
     def test_disabled_set_not_applied(self, tmp_path, monkeypatch):
         config_dir, games_dir, sets_dir = _setup_dirs(tmp_path, monkeypatch)
         sid = str(uuid.uuid4())
         _write_set(sets_dir, sid, env={"SECRET": "yes"})
-        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": {"order": [sid]}})
-        _write_toml(games_dir / "111.toml", {"sets": {"enabled": []}})
+        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": [sid]})
+        _write_toml(games_dir / "111.toml", {"sets": []})
         assert "SECRET" not in cfg_module.get_merged_config("111")["env"]
 
 
@@ -288,16 +288,16 @@ class TestBootstrapGameConfig:
         _write_set(sets_dir, sid, enabled_by_default_in_general=True)
         # enabled_by_default is under general.enabled_by_default
         _write_toml(sets_dir / f"{sid}.toml", {"general": {"name": "Default Set", "enabled_by_default": True}})
-        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": {"order": [sid]}})
+        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": [sid]})
         cfg_module.bootstrap_game_config("222")
         assert (games_dir / "222.toml").exists()
         loaded = tomllib.loads((games_dir / "222.toml").read_text())
-        assert sid in loaded.get("sets", {}).get("enabled", [])
+        assert sid in loaded.get("sets", [])
 
     def test_no_file_created_when_no_sets_default(self, tmp_path, monkeypatch):
         config_dir, games_dir, sets_dir = _setup_dirs(tmp_path, monkeypatch)
         sid = str(uuid.uuid4())
         _write_toml(sets_dir / f"{sid}.toml", {"general": {"name": "Non-default", "enabled_by_default": False}})
-        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": {"order": [sid]}})
+        _write_toml(config_dir / "config.toml", {"general": {"countdown": 5}, "sets": [sid]})
         cfg_module.bootstrap_game_config("333")
         assert not (games_dir / "333.toml").exists()

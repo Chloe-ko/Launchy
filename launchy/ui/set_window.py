@@ -109,7 +109,7 @@ class SetWindow(Adw.Window):
         from launchy.config import get_global_config, get_set_config as _gsc
         gcfg = get_global_config()
         other_sets = []
-        for sid in gcfg.get("sets", {}).get("order", []):
+        for sid in gcfg.get("sets", []):
             if sid == self.set_id:
                 continue
             try:
@@ -206,7 +206,7 @@ class SetWindow(Adw.Window):
         new_name = self._name_entry.get_text().strip() or "Unnamed Set"
 
         gcfg = get_global_config()
-        for other_id in gcfg.get("sets", {}).get("order", []):
+        for other_id in gcfg.get("sets", []):
             if other_id == self.set_id:
                 continue
             try:

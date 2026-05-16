@@ -96,7 +96,7 @@ class SettingsWindow(Adw.Window):
         self._set_rows = []  # populated by _build_game_sets_tab for per-game
         self._explicit_set_ids: set = set()
         if not self.is_global:
-            self._explicit_set_ids = set(self._config.get("sets", {}).get("enabled", []))
+            self._explicit_set_ids = set(self._config.get("sets", []))
 
         general_page, self._general_widgets = self._build_general_tab()
         notebook.append_page(general_page, Gtk.Label(label="General"))
@@ -501,14 +501,10 @@ class SettingsWindow(Adw.Window):
         def _save_order():
             order = [r.set_id for r in rows]
             cfg = get_global_config()
-            if "sets" not in cfg:
-                cfg["sets"] = {}
-            cfg["sets"]["order"] = order
+            cfg["sets"] = order
             save_global_config(cfg)
             # keep self._config in sync so _on_save doesn't clobber the order
-            if "sets" not in self._config:
-                self._config["sets"] = {}
-            self._config["sets"]["order"] = order
+            self._config["sets"] = order
 
         def _add_row(set_id, name):
             row = _GlobalSetRow(set_id=set_id, name=name)
@@ -537,7 +533,7 @@ class SettingsWindow(Adw.Window):
             return row
 
         # Load existing sets
-        all_set_ids = self._config.get("sets", {}).get("order", [])
+        all_set_ids = self._config.get("sets", [])
         for sid in all_set_ids:
             try:
                 scfg = get_set_config(sid)
@@ -603,7 +599,7 @@ class SettingsWindow(Adw.Window):
         content.append(lb)
 
         gcfg = self._global_config or {}
-        set_order = gcfg.get("sets", {}).get("order", [])
+        set_order = gcfg.get("sets", [])
         explicit_ids = self._explicit_set_ids
 
         def _refresh_list():
@@ -870,7 +866,7 @@ class SettingsWindow(Adw.Window):
             return
         from launchy.config import get_set_config, _expand_with_deps
         gcfg = self._global_config or {}
-        set_order = gcfg.get("sets", {}).get("order", [])
+        set_order = gcfg.get("sets", [])
         all_enabled = _expand_with_deps(self._explicit_set_ids, set_order)
         active_sets = []  # [(sid, sc), ...] highest priority first
         for sid in set_order:
@@ -999,9 +995,7 @@ class SettingsWindow(Adw.Window):
                 "wrappers": ignore_wrappers,
                 "args": ignore_args,
             }
-            cfg["sets"] = {
-                "enabled": [r.set_id for r in self._set_rows if r.is_enabled()],
-            }
+            cfg["sets"] = [r.set_id for r in self._set_rows if r.is_enabled()]
             save_game_config(self.appid, cfg)
 
         if self._on_saved_cb:
