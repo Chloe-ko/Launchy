@@ -22,12 +22,12 @@ source=("${pkgname}-${pkgver}.tar.gz::https://github.com/Chloe-ko/launchy/archiv
 sha256sums=('SKIP')
 
 build() {
-    cd "${pkgname}-${pkgver}"
+    cd "Launchy-${pkgver}"
     python -m build --wheel --no-isolation
 }
 
 package() {
-    cd "${pkgname}-${pkgver}"
+    cd "Launchy-${pkgver}"
     python -m installer --destdir="$pkgdir" dist/*.whl
 
     install -Dm644 launchy/logo.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/launchy.svg"
