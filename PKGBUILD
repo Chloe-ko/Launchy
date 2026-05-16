@@ -1,6 +1,6 @@
 # Maintainer: Chloe <chloesviel@gmail.com>
 pkgname=launchy
-pkgver=1.0.0
+pkgver=0.1
 pkgrel=1
 pkgdesc="Configurable Steam compatibility tool launcher with per-game settings UI"
 arch=('any')

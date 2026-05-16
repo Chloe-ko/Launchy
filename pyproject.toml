@@ -4,10 +4,10 @@ build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "launchy"
-version = "1.0.0"
+version = "0.1"
 description = "Configurable Steam compatibility tool launcher with per-game settings"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "GPL-2.0-only" }
 requires-python = ">=3.11"
 dependencies = []
 
