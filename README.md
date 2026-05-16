@@ -67,7 +67,7 @@ Config files live in `~/.config/launchy/`:
 | Setting | Behaviour |
 |---------|-----------|
 | `env` | Global → active sets → per-game; last writer wins per key |
-| `wrappers` | Global + sets + per-game concatenated; binary deduplication across sets |
+| `wrappers` | Global + sets + per-game concatenated; per-game highest priority, binary deduplication (first occurrence wins) |
 | `args` | Global + sets + per-game appended to final command |
 | `proton` | Per-game wins if set, otherwise global |
 
@@ -79,6 +79,12 @@ launchy uninstall            Remove Steam compat tool entry
 launchy settings             Open global settings
 launchy settings <appid>     Open per-game settings
 ```
+
+## Motivation
+
+Launchy was born out of love for [SteamTinkerLaunch](https://github.com/sonic2kk/steamtinkerlaunch) — a fantastic tool that showed how much you can do by wrapping Steam's compat tool interface. Over time STL became harder to maintain and some of its features stopped working reliably with modern Proton and Steam. Rather than patch around an aging shell-script architecture, this felt like a good opportunity to build something simpler and more focused from scratch.
+
+Thanks to the STL project for the inspiration.
 
 ## License
 
