@@ -223,6 +223,16 @@ class SettingsWindow(Adw.Window):
         group.add(proton_row)
         widgets["proton_row"] = proton_row
 
+        if not self.is_global:
+            skip_val = self._config.get("general", {}).get("skip_countdown", False)
+            skip_row = Adw.SwitchRow(
+                title="Launch Instantly",
+                subtitle="Skip the countdown window and launch this game directly.",
+                active=skip_val,
+            )
+            group.add(skip_row)
+            widgets["skip_row"] = skip_row
+
         if self.is_global:
             self._skip_group = Adw.PreferencesGroup(
                 title="Skip Countdown",
@@ -957,6 +967,8 @@ class SettingsWindow(Adw.Window):
                 cfg["general"]["proton"] = ""
             elif 1 <= idx <= len(self._proton_versions):
                 cfg["general"]["proton"] = self._proton_versions[idx - 1]["id"]
+            if "skip_row" in gw:
+                cfg["general"]["skip_countdown"] = gw["skip_row"].get_active()
         else:
             if 0 <= idx < len(self._proton_versions):
                 cfg["general"]["proton"] = self._proton_versions[idx]["id"]
