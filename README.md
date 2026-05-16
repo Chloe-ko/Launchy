@@ -2,6 +2,8 @@
 
 # Launchy
 
+[![Tests](https://github.com/Chloe-ko/Launchy/actions/workflows/tests.yml/badge.svg)](https://github.com/Chloe-ko/Launchy/actions/workflows/tests.yml)
+
 A configurable Steam compatibility tool that intercepts game launches to show a settings window before the game starts.
 
 > This project was developed with the help of [Claude](https://claude.ai) (Anthropic AI).
