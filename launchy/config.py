@@ -91,6 +91,12 @@ def save_game_config(appid: str, config: dict):
     _save(GAMES_DIR / f"{appid}.toml", config)
 
 
+def delete_game_config(appid: str):
+    path = GAMES_DIR / f"{appid}.toml"
+    if path.exists():
+        path.unlink()
+
+
 # ---------------------------------------------------------------------------
 # Sets
 # ---------------------------------------------------------------------------

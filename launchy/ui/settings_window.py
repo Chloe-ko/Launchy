@@ -144,6 +144,10 @@ class SettingsWindow(Adw.Window):
             sets_page = self._build_game_sets_tab()
         notebook.append_page(sets_page, Gtk.Label(label="Sets"))
 
+        if self.is_global:
+            game_configs_page = self._build_game_configs_tab()
+            notebook.append_page(game_configs_page, Gtk.Label(label="Game Configs"))
+
         if not self.is_global:
             self._refresh_set_sections()
 
@@ -591,6 +595,98 @@ class SettingsWindow(Adw.Window):
         add_btn.connect("clicked", on_add)
         outer.append(add_btn)
 
+        return outer
+
+    def _build_game_configs_tab(self):
+        from launchy.config import get_games_with_explicit_config, get_game_config, delete_game_config
+        from launchy.steam import get_game_info
+
+        outer, content = self._tab_outer()
+
+        desc = Gtk.Label(
+            label="All games that have a Launchy configuration. "
+                  "Edit settings for a game, or delete its configuration entirely."
+        )
+        desc.add_css_class("dim-label")
+        desc.add_css_class("caption")
+        desc.set_halign(Gtk.Align.START)
+        desc.set_wrap(True)
+        desc.set_margin_start(16)
+        desc.set_margin_end(16)
+        desc.set_margin_top(8)
+        desc.set_margin_bottom(4)
+        content.append(desc)
+
+        lb = self._make_listbox()
+        placeholder = Gtk.Label(label="No games have a Launchy configuration yet.")
+        placeholder.add_css_class("dim-label")
+        placeholder.set_margin_top(12)
+        placeholder.set_margin_bottom(12)
+        lb.set_placeholder(placeholder)
+        content.append(lb)
+
+        rows: list = []
+
+        def _populate():
+            for r in list(rows):
+                lb.remove(r)
+            rows.clear()
+
+            appids = get_games_with_explicit_config()
+            entries = []
+            for appid in appids:
+                try:
+                    info = get_game_info(appid)
+                    cfg_name = get_game_config(appid).get("general", {}).get("name", "")
+                    name = cfg_name or info.get("name") or f"App {appid}"
+                    img_path = info.get("header_image_path")
+                except Exception:
+                    name = f"App {appid}"
+                    img_path = None
+                entries.append((appid, name, img_path))
+            entries.sort(key=lambda x: x[1].lower())
+
+            for appid, name, img_path in entries:
+                row = _GameConfigRow(appid=appid, name=name, img_path=img_path)
+
+                def on_edit(_r, aid=appid):
+                    sw = SettingsWindow(appid=aid, is_global=False)
+                    sw.set_transient_for(self)
+                    sw.set_modal(True)
+                    sw.present()
+
+                def on_delete(_r, aid=appid, n=name, r=row):
+                    dialog = Adw.AlertDialog(
+                        heading="Delete Game Configuration?",
+                        body=(
+                            f"This will permanently delete all Launchy configuration for "
+                            f"\"{n}\" (App {aid}), including environment variables, wrappers, "
+                            f"arguments, and set assignments. "
+                            f"This action is destructive and cannot be undone."
+                        ),
+                    )
+                    dialog.add_response("cancel", "Cancel")
+                    dialog.add_response("delete", "Delete Configuration")
+                    dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+                    dialog.set_default_response("cancel")
+                    dialog.set_close_response("cancel")
+
+                    def on_response(_d, resp, _aid=aid, _r=r):
+                        if resp == "delete":
+                            delete_game_config(_aid)
+                            if _r in rows:
+                                rows.remove(_r)
+                            lb.remove(_r)
+
+                    dialog.connect("response", on_response)
+                    dialog.present(self)
+
+                row.connect_edit(on_edit)
+                row.connect_delete(on_delete)
+                rows.append(row)
+                lb.append(row)
+
+        _populate()
         return outer
 
     def _build_game_sets_tab(self):
@@ -1420,6 +1516,68 @@ class _GlobalSetRow(Gtk.ListBoxRow):
                 on_reorder()
         self._up_btn.connect("clicked", lambda _: _move(-1))
         self._down_btn.connect("clicked", lambda _: _move(1))
+
+
+class _GameConfigRow(Gtk.ListBoxRow):
+    """Row in Game Configs tab — thumbnail, name/appid, Edit and Delete buttons."""
+    def __init__(self, *, appid: str, name: str, img_path):
+        super().__init__()
+        self.set_activatable(False)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        box.set_margin_start(8)
+        box.set_margin_end(8)
+        box.set_margin_top(6)
+        box.set_margin_bottom(6)
+        self.set_child(box)
+
+        if img_path:
+            try:
+                from gi.repository import GdkPixbuf
+                thumb_w, thumb_h = 60, 30
+                pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(img_path, thumb_w * 2, -1, True)
+                pic = Gtk.Picture.new_for_pixbuf(pb)
+                pic.set_content_fit(Gtk.ContentFit.COVER)
+                pic.set_size_request(thumb_w, thumb_h)
+                pic.set_margin_top(4)
+                pic.set_margin_bottom(4)
+                pic.set_margin_end(4)
+                box.append(pic)
+            except Exception:
+                pass
+
+        text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        text_box.set_hexpand(True)
+        text_box.set_valign(Gtk.Align.CENTER)
+
+        name_lbl = Gtk.Label(label=name)
+        name_lbl.set_halign(Gtk.Align.START)
+        name_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        text_box.append(name_lbl)
+
+        sub_lbl = Gtk.Label(label=f"App {appid}")
+        sub_lbl.add_css_class("dim-label")
+        sub_lbl.add_css_class("caption")
+        sub_lbl.set_halign(Gtk.Align.START)
+        text_box.append(sub_lbl)
+
+        box.append(text_box)
+
+        self._edit_btn = Gtk.Button(label="Edit")
+        self._edit_btn.set_valign(Gtk.Align.CENTER)
+
+        self._del_btn = Gtk.Button(label="Delete")
+        self._del_btn.add_css_class("destructive-action")
+        self._del_btn.set_valign(Gtk.Align.CENTER)
+
+        box.append(self._edit_btn)
+        box.append(self._del_btn)
+
+    def connect_edit(self, callback):
+        self._edit_btn.connect("clicked", lambda _: callback(self))
+
+    def connect_delete(self, callback):
+        self._del_btn.connect("clicked", lambda _: callback(self))
 
 
 class _GamePickerWindow(Adw.Window):
