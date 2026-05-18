@@ -1,6 +1,5 @@
 """Install Launchy as a Steam compatibility tool."""
 
-import os
 import shutil
 import stat
 import sys
@@ -35,114 +34,57 @@ _TOOL_MANIFEST = """\
 }
 """
 
-# Path to the PyInstaller runner bundle inside the Flatpak.
-_FLATPAK_RUNNER_SRC = Path("/app/share/launchy/runner")
-
-# Where the runner is copied on the user's system.
-_RUNNER_DEST = Path.home() / ".local" / "share" / "launchy" / "runner"
-
 
 def _wrapper_script(launchy_bin: str) -> str:
     return f'#!/usr/bin/env bash\nexec "{launchy_bin}" "$@"\n'
 
 
-def _runner_script(runner_path: Path) -> str:
-    return f'#!/usr/bin/env bash\nexec "{runner_path}" "$@"\n'
-
-
-def _flatpak_wrapper_script(flatpak_id: str) -> str:
-    # Fallback used when the PyInstaller runner bundle is not present.
-    # flatpak-spawn --host escapes Steam's Flatpak sandbox to run launchy on the host.
-    return (
-        "#!/usr/bin/env bash\n"
-        f'exec flatpak-spawn --host flatpak run --command=launchy {flatpak_id} "$@"\n'
-    )
-
-
 def install_compat_tool():
-    flatpak_id = os.environ.get("FLATPAK_ID", "")
+    launchy_bin = shutil.which("launchy")
+    if not launchy_bin:
+        print("Error: 'launchy' not found on PATH. Run 'make install' first.", file=sys.stderr)
+        sys.exit(1)
+    launchy_bin = str(Path(launchy_bin).resolve())
 
-    runner_dest = None
-    launchy_bin = None
-
-    if flatpak_id:
-        if _FLATPAK_RUNNER_SRC.exists():
-            runner_dest = _RUNNER_DEST
-            runner_dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(_FLATPAK_RUNNER_SRC, runner_dest)
-            runner_dest.chmod(runner_dest.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-    else:
-        launchy_bin = shutil.which("launchy")
-        if not launchy_bin:
-            print("Error: 'launchy' not found on PATH. Run 'make install' first.", file=sys.stderr)
-            sys.exit(1)
-        launchy_bin = str(Path(launchy_bin).resolve())
-
-    roots = _find_all_steam_roots()
-    if not roots:
+    steam_root = _find_steam_root()
+    if not steam_root:
         print("Error: Steam installation not found.", file=sys.stderr)
         sys.exit(1)
 
-    for root in roots:
-        target = root / "compatibilitytools.d" / "launchy"
-        target.mkdir(parents=True, exist_ok=True)
+    target = steam_root / "compatibilitytools.d" / "launchy"
+    target.mkdir(parents=True, exist_ok=True)
 
-        (target / "compatibilitytool.vdf").write_text(_COMPAT_VDF, encoding="utf-8")
-        (target / "toolmanifest.vdf").write_text(_TOOL_MANIFEST, encoding="utf-8")
+    (target / "compatibilitytool.vdf").write_text(_COMPAT_VDF, encoding="utf-8")
+    (target / "toolmanifest.vdf").write_text(_TOOL_MANIFEST, encoding="utf-8")
 
-        launcher = target / "launchy"
-        if runner_dest:
-            script = _runner_script(runner_dest)
-            print(f"Using runner:   {runner_dest}")
-        elif flatpak_id:
-            script = _flatpak_wrapper_script(flatpak_id)
-            print(f"Using Flatpak:  {flatpak_id} (runner bundle not found, using flatpak-spawn fallback)")
-        else:
-            script = _wrapper_script(launchy_bin)
-            print(f"Using binary:   {launchy_bin}")
-        launcher.write_text(script, encoding="utf-8")
-        launcher.chmod(launcher.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+    launcher = target / "launchy"
+    launcher.write_text(_wrapper_script(launchy_bin), encoding="utf-8")
+    launcher.chmod(launcher.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
-        print(f"Installed to:   {target}")
-
+    print(f"Using binary:  {launchy_bin}")
+    print(f"Installed to:  {target}")
     print("Restart Steam, then select 'Launchy' as the compatibility tool for a game.")
 
 
 def uninstall_compat_tool():
-    roots = _find_all_steam_roots()
-    removed_any = False
-    for root in roots:
-        target = root / "compatibilitytools.d" / "launchy"
-        if target.exists():
-            shutil.rmtree(target)
-            print(f"Removed {target}")
-            removed_any = True
-
-    runner = _RUNNER_DEST
-    if runner.exists():
-        runner.unlink()
-        print(f"Removed {runner}")
-        removed_any = True
-
-    if not removed_any:
+    steam_root = _find_steam_root()
+    if not steam_root:
+        print("Steam installation not found.", file=sys.stderr)
+        return
+    target = steam_root / "compatibilitytools.d" / "launchy"
+    if target.exists():
+        shutil.rmtree(target)
+        print(f"Removed {target}")
+    else:
         print("Launchy compat tool not installed.")
 
 
-def _find_all_steam_roots() -> list[Path]:
-    """Return all found Steam root directories, deduplicating symlinked paths."""
-    candidates = [
+def _find_steam_root():
+    for p in [
         Path.home() / ".steam" / "root",
         Path.home() / ".steam" / "steam",
         Path.home() / ".local" / "share" / "Steam",
-        Path.home() / ".var" / "app" / "com.valvesoftware.Steam" / "data" / "Steam",
-    ]
-    seen: set[str] = set()
-    roots: list[Path] = []
-    for p in candidates:
-        if not (p / "steamapps").exists():
-            continue
-        key = str(p.resolve())
-        if key not in seen:
-            seen.add(key)
-            roots.append(p)
-    return roots
+    ]:
+        if (p / "steamapps").exists():
+            return p
+    return None

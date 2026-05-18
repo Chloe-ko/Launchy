@@ -147,8 +147,10 @@ def _show_error_subprocess(message: str):
     import subprocess
     env = {k: os.environ[k] for k in _SUBPROCESS_KEEP if k in os.environ}
     try:
-        cmd = _ui_subprocess_cmd("--show-error", message)
-        subprocess.run(cmd, env=env)
+        subprocess.run(
+            [sys.executable, "-m", "launchy", "--show-error", message],
+            env=env,
+        )
     except Exception as e:
         logging.warning("could not show error dialog: %s", e)
 
@@ -197,17 +199,6 @@ _SUBPROCESS_KEEP = frozenset({
 })
 
 
-def _ui_subprocess_cmd(*args: str) -> list[str]:
-    """Build the command list for a UI subprocess.
-
-    PyInstaller bundles set sys.frozen and don't support the -m flag.
-    When frozen, call the bundle directly; otherwise use python -m launchy.
-    """
-    if getattr(sys, "frozen", False):
-        return [sys.executable, *args]
-    return [sys.executable, "-m", "launchy", *args]
-
-
 def _run_ui_subprocess(appid: str) -> str:
     """Spawn the GTK UI in a subprocess with a minimal clean environment.
 
@@ -221,7 +212,7 @@ def _run_ui_subprocess(appid: str) -> str:
 
     try:
         proc = subprocess.run(
-            _ui_subprocess_cmd("--run-ui", appid),
+            [sys.executable, "-m", "launchy", "--run-ui", appid],
             env=env, stderr=subprocess.PIPE,
         )
         if proc.stderr:
