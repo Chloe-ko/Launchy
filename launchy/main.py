@@ -117,7 +117,8 @@ def main():
 
     final_cmd: list[str] = []
     if proton_bin:
-        runtime = find_steam_runtime_entry_point()
+        proton_dir = Path(proton_bin).parent
+        runtime = find_steam_runtime_entry_point(proton_dir)
         logging.debug("runtime entry point: %s", runtime)
         if runtime:
             final_cmd.extend(wrapper_tokens)

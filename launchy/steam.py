@@ -231,15 +231,45 @@ def find_proton_binary(proton_id: str) -> Optional[str]:
     return None
 
 
-def find_steam_runtime_entry_point() -> Optional[str]:
-    """Find the SteamLinuxRuntime _v2-entry-point across all Steam library folders.
+def find_steam_runtime_entry_point(proton_dir: Optional[Path] = None) -> Optional[str]:
+    """Find the _v2-entry-point for the given Proton installation.
 
-    Prefers Sniper (used by Proton 7+), falls back to Soldier.
+    If proton_dir is provided and its toolmanifest.vdf declares require_tool_appid,
+    the runtime matching that Steam app ID is used (e.g. SteamLinuxRuntime_4 for
+    Proton 11+). Falls back to scanning for Sniper then Soldier.
     """
+    if proton_dir:
+        appid = _vdf_field(proton_dir / "toolmanifest.vdf", "require_tool_appid")
+        if appid:
+            ep = _find_runtime_entry_by_appid(appid)
+            if ep:
+                return str(ep)
     for runtime in ("SteamLinuxRuntime_sniper", "SteamLinuxRuntime_soldier"):
         ep = _find_in_all_libraries(f"common/{runtime}/_v2-entry-point")
         if ep:
             return str(ep)
+    return None
+
+
+def _find_runtime_entry_by_appid(appid: str) -> Optional[Path]:
+    """Find the _v2-entry-point for a runtime by its Steam app ID."""
+    if not STEAM_ROOT:
+        return None
+    roots = [STEAM_ROOT / "steamapps"]
+    lf = STEAM_ROOT / "steamapps" / "libraryfolders.vdf"
+    if lf.exists():
+        for m in re.finditer(r'"path"\s+"([^"]+)"', lf.read_text(errors="replace")):
+            roots.append(Path(m.group(1)) / "steamapps")
+    for r in roots:
+        manifest = r / f"appmanifest_{appid}.acf"
+        if not manifest.exists():
+            continue
+        installdir = _acf_field(manifest, "installdir")
+        if not installdir:
+            continue
+        ep = r / "common" / installdir / "_v2-entry-point"
+        if ep.exists() and os.access(ep, os.X_OK):
+            return ep
     return None
 
 
