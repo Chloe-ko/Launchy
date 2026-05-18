@@ -492,7 +492,7 @@ class SettingsWindow(Adw.Window):
 
     def _build_global_sets_tab(self):
         from launchy.config import (
-            get_set_config, delete_set_config, create_set,
+            get_set_config, save_set_config, delete_set_config, create_set,
             get_global_config, save_global_config,
         )
         from launchy.ui.set_window import SetWindow
@@ -532,7 +532,7 @@ class SettingsWindow(Adw.Window):
             # keep self._config in sync so _on_save doesn't clobber the order
             self._config["sets"] = order
 
-        def _add_row(set_id, name):
+        def _add_row(set_id, name, insert_after=None):
             row = _GlobalSetRow(set_id=set_id, name=name)
 
             def on_edit(_row):
@@ -544,6 +544,19 @@ class SettingsWindow(Adw.Window):
                 )
                 sw.present()
 
+            def on_duplicate(_row):
+                import copy
+                src = get_set_config(set_id)
+                new_cfg = copy.deepcopy(src)
+                orig_name = new_cfg.get("general", {}).get("name", "Unnamed Set")
+                if "general" not in new_cfg:
+                    new_cfg["general"] = {}
+                new_cfg["general"]["name"] = f"{orig_name} (Copy)"
+                new_sid = create_set()
+                save_set_config(new_sid, new_cfg)
+                _add_row(new_sid, new_cfg["general"]["name"], insert_after=row)
+                _save_order()
+
             def on_delete(_row):
                 delete_set_config(set_id)
                 if row in rows:
@@ -552,10 +565,16 @@ class SettingsWindow(Adw.Window):
                 _save_order()
 
             row.connect_edit(on_edit)
+            row.connect_duplicate(on_duplicate)
             row.connect_delete(on_delete)
             row.connect_move(rows, lb, _save_order)
-            rows.append(row)
-            lb.append(row)
+            if insert_after is not None and insert_after in rows:
+                idx = rows.index(insert_after) + 1
+                rows.insert(idx, row)
+                lb.insert(row, idx)
+            else:
+                rows.append(row)
+                lb.append(row)
             return row
 
         # Load existing sets
@@ -1477,6 +1496,11 @@ class _GlobalSetRow(Gtk.ListBoxRow):
         self._edit_btn.add_css_class("circular")
         self._edit_btn.set_tooltip_text("Edit set")
 
+        self._dup_btn = Gtk.Button(icon_name="edit-copy-symbolic")
+        self._dup_btn.add_css_class("flat")
+        self._dup_btn.add_css_class("circular")
+        self._dup_btn.set_tooltip_text("Duplicate set")
+
         self._up_btn = Gtk.Button(icon_name="go-up-symbolic")
         self._up_btn.add_css_class("flat")
         self._up_btn.add_css_class("circular")
@@ -1492,7 +1516,7 @@ class _GlobalSetRow(Gtk.ListBoxRow):
         self._del_btn.add_css_class("circular")
         self._del_btn.set_tooltip_text("Delete set")
 
-        for btn in (self._edit_btn, self._up_btn, self._down_btn, self._del_btn):
+        for btn in (self._edit_btn, self._dup_btn, self._up_btn, self._down_btn, self._del_btn):
             box.append(btn)
 
     def update_name(self, name: str):
@@ -1500,6 +1524,9 @@ class _GlobalSetRow(Gtk.ListBoxRow):
 
     def connect_edit(self, callback):
         self._edit_btn.connect("clicked", lambda _: callback(self))
+
+    def connect_duplicate(self, callback):
+        self._dup_btn.connect("clicked", lambda _: callback(self))
 
     def connect_delete(self, callback):
         self._del_btn.connect("clicked", lambda _: callback(self))
