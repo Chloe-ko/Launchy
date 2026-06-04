@@ -72,8 +72,8 @@ def main():
     game_cmd = args[1:]
     appid = os.environ.get("SteamAppId", "0")
 
-    # Passthrough verbs that should not trigger UI
-    if verb in ("runinprefix", "getcompatpath", "getnativepath") or not game_cmd:
+    # runinprefix: run command directly in the already-configured environment
+    if verb == "runinprefix" or not game_cmd:
         if game_cmd:
             os.execvp(game_cmd[0], game_cmd)
         return
@@ -88,8 +88,9 @@ def main():
         if has_display:
             _show_error_subprocess(msg)
         sys.exit(1)
-    # Skip UI for appid "0" — pre-game housekeeping calls (d3ddriverquery64, etc.)
-    show_ui = has_display and appid != "0"
+    # Skip UI for appid "0" (housekeeping), and for path-translation verbs that
+    # must be forwarded to Proton but must never block on a UI dialog.
+    show_ui = has_display and appid != "0" and verb not in ("getcompatpath", "getnativepath")
 
     result = _run_ui_subprocess(appid) if show_ui else "launch"
 
