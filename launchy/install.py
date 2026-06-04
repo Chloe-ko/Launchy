@@ -10,7 +10,7 @@ _COMPAT_VDF = """\
 {
   "compat_tools"
   {
-    "launchy"
+    "Proton-Launchy"
     {
       "install_path" "."
       "display_name"  "Launchy"
@@ -26,11 +26,10 @@ _COMPAT_VDF = """\
 _TOOL_MANIFEST = """\
 "manifest"
 {
-  "commandline"                    "/launchy run"
-  "commandline_waitforexitandrun"  "/launchy waitforexitandrun"
-  "commandline_runinprefix"        "/launchy runinprefix"
-  "commandline_getcompatpath"      "/launchy getcompatpath"
-  "commandline_getnativepath"      "/launchy getnativepath"
+  "version"                  "2"
+  "commandline"              "/launchy %verb%"
+  "use_sessions"             "1"
+  "compatmanager_layer_name" "proton"
 }
 """
 
