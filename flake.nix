@@ -46,10 +46,21 @@
               --replace-fail \
                 '"DBUS_SESSION_BUS_ADDRESS",' \
                 '"DBUS_SESSION_BUS_ADDRESS", "PYTHONPATH", "GI_TYPELIB_PATH", "GIO_EXTRA_MODULES", "GDK_PIXBUF_MODULE_FILE",'
-            substituteInPlace launchy/install.py \
-              --replace-fail \
-                'launchy_bin = str(Path(launchy_bin).resolve())' \
-                '# Preserve the path returned by shutil.which()'
+          substituteInPlace launchy/install.py \
+            --replace-fail \
+              'import shutil' \
+              'import os
+          import shutil' \
+            --replace-fail \
+              'launchy_bin = shutil.which("launchy")' \
+              'search_path = os.pathsep.join(
+                  entry for entry in os.environ.get("PATH", "").split(os.pathsep)
+                  if entry and not entry.startswith("/nix/store/")
+              )
+              launchy_bin = shutil.which("launchy", path=search_path)' \
+            --replace-fail \
+              'launchy_bin = str(Path(launchy_bin).resolve())' \
+              '# Preserve the profile path returned by shutil.which()'
           '';
 
           # The setuptools build installs the Python package and CLI.
