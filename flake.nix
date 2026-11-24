@@ -53,8 +53,7 @@
             substituteInPlace launchy/main.py \
               --replace-fail \
                 'env = {k: os.environ[k] for k in _SUBPROCESS_KEEP if k in os.environ}' \
-                'env = {k: os.environ[k] for k in _SUBPROCESS_KEEP if k in os.environ}
-            env["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p)'
+                'env = {**{k: os.environ[k] for k in _SUBPROCESS_KEEP if k in os.environ}, "PYTHONPATH": os.pathsep.join(p for p in sys.path if p)}'
 
             # Pass the GTK/GObject environment into the GTK subprocess.
             substituteInPlace launchy/main.py \
