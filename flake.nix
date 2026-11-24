@@ -51,6 +51,11 @@
           postPatch = ''
             # Preserve Python module paths and GTK environment in
             # Launchy's clean UI subprocess environment.
+            # Pass the correct verb to Steam Linux Runtime.
+            substituteInPlace launchy/main.py \
+              --replace-fail \
+                'final_cmd.extend([runtime, "--"])' \
+                'final_cmd.extend([runtime, f"--verb={verb}", "--"])'
             substituteInPlace launchy/main.py \
               --replace-fail \
                 'env = {k: os.environ[k] for k in _SUBPROCESS_KEEP if k in os.environ}' \
