@@ -42,10 +42,11 @@
           # Launchy deliberately starts its GTK UI in a clean subprocess.
           # Preserve the Nix GTK/GObject environment needed by that subprocess.
           postPatch = ''
-            substituteInPlace launchy/main.py \
-              --replace-fail \
-                '"DBUS_SESSION_BUS_ADDRESS",' \
-                '"DBUS_SESSION_BUS_ADDRESS", "PYTHONPATH", "GI_TYPELIB_PATH", "GIO_EXTRA_MODULES", "GDK_PIXBUF_MODULE_FILE",'
+          substituteInPlace launchy/main.py \
+            --replace-fail \
+              'env = {k: os.environ[k] for k in _SUBPROCESS_KEEP if k in os.environ}' \
+              'env = {k: os.environ[k] for k in _SUBPROCESS_KEEP if k in os.environ}
+              env["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p)'
           substituteInPlace launchy/install.py \
             --replace-fail \
               'import shutil' \
