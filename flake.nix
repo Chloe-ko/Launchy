@@ -46,6 +46,10 @@
               --replace-fail \
                 '"DBUS_SESSION_BUS_ADDRESS",' \
                 '"DBUS_SESSION_BUS_ADDRESS", "PYTHONPATH", "GI_TYPELIB_PATH", "GIO_EXTRA_MODULES", "GDK_PIXBUF_MODULE_FILE",'
+            substituteInPlace launchy/install.py \
+              --replace-fail \
+                'launchy_bin = str(Path(launchy_bin).resolve())' \
+                'launchy_bin = str(Path(launchy_bin))'
           '';
 
           # The setuptools build installs the Python package and CLI.
