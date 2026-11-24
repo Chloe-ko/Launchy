@@ -49,7 +49,7 @@
             substituteInPlace launchy/install.py \
               --replace-fail \
                 'launchy_bin = str(Path(launchy_bin).resolve())' \
-                'launchy_bin = str(Path(launchy_bin))'
+                '# Preserve the path returned by shutil.which()'
           '';
 
           # The setuptools build installs the Python package and CLI.
