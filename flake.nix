@@ -7,6 +7,7 @@
   outputs = { self, nixpkgs }:
     let
       systems = [ "x86_64-linux" ];
+
       forAllSystems = nixpkgs.lib.genAttrs systems;
 
       packageFor = system:
@@ -39,45 +40,33 @@
             pkgs.libadwaita
           ];
 
-          # Avoid double-wrapping: let the Python builder handle
-          # the executable wrapper, using the GApps arguments.
+          # Avoid double-wrapping Python executables.
           dontWrapGApps = true;
 
+          # Pass GTK wrapper arguments to the Python executable wrapper.
           preFixup = ''
             makeWrapperArgs+=("''${gappsWrapperArgs[@]}")
           '';
 
           postPatch = ''
-            # Preserve the Python module search path in Launchy's
-            # clean GTK subprocess environment.
+            # Preserve Python module paths and GTK environment in
+            # Launchy's clean UI subprocess environment.
             substituteInPlace launchy/main.py \
               --replace-fail \
                 'env = {k: os.environ[k] for k in _SUBPROCESS_KEEP if k in os.environ}' \
-                'env = {**{k: os.environ[k] for k in _SUBPROCESS_KEEP if k in os.environ}, "PYTHONPATH": os.pathsep.join(p for p in sys.path if p)}'
+                'env = {**{k: os.environ[k] for k in _SUBPROCESS_KEEP if k in os.environ}, "PYTHONPATH": os.pathsep.join(p for p in sys.path if p), **{k: os.environ[k] for k in ("GI_TYPELIB_PATH", "GIO_EXTRA_MODULES", "GDK_PIXBUF_MODULE_FILE") if k in os.environ}}'
 
-            # Pass the GTK/GObject environment into the GTK subprocess.
-            substituteInPlace launchy/main.py \
-              --replace-fail \
-                '"DBUS_SESSION_BUS_ADDRESS",' \
-                '"DBUS_SESSION_BUS_ADDRESS", "GI_TYPELIB_PATH", "GIO_EXTRA_MODULES", "GDK_PIXBUF_MODULE_FILE",'
-
-            # Preserve the profile symlink instead of resolving it
-            # into the Nix store when registering the Steam tool.
+            # Import os for PATH filtering.
             substituteInPlace launchy/install.py \
               --replace-fail \
                 'import shutil' \
-                'import os
-            import shutil' \
+                'import os; import shutil' \
               --replace-fail \
                 'launchy_bin = shutil.which("launchy")' \
-                'search_path = os.pathsep.join(
-                entry for entry in os.environ.get("PATH", "").split(os.pathsep)
-                if entry and not entry.startswith("/nix/store/")
-            )
-            launchy_bin = shutil.which("launchy", path=search_path)' \
+                'launchy_bin = shutil.which("launchy", path=os.pathsep.join(p for p in os.environ.get("PATH", "").split(os.pathsep) if p and not p.startswith("/nix/store/")))' \
               --replace-fail \
                 'launchy_bin = str(Path(launchy_bin).resolve())' \
-                '# Preserve the profile path returned by shutil.which()'
+                'launchy_bin = launchy_bin'
           '';
 
           # Install desktop integration and application icon.
